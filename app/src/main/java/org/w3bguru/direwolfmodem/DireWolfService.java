@@ -58,6 +58,25 @@ public final class DireWolfService extends Service {
         return status;
     }
 
+    /** Packets heard and sent, newest first, for the large list on the screen. */
+    private static final ArrayDeque<String> packets = new ArrayDeque<>();
+    private static final int PACKETS_KEPT = 100;
+    /** Audio level Dire Wolf printed just before the next packet line, or -1. */
+    private static int pendingLevel = -1;
+
+    public static List<String> packets() {
+        synchronized (packets) {
+            return new ArrayList<>(packets);
+        }
+    }
+
+    private static void addPacket(String entry) {
+        synchronized (packets) {
+            packets.addFirst(entry);
+            while (packets.size() > PACKETS_KEPT) packets.removeLast();
+        }
+    }
+
     public static List<String> lastLogLines(int n) {
         synchronized (logLines) {
             List<String> all = new ArrayList<>(logLines);
@@ -150,6 +169,10 @@ public final class DireWolfService extends Service {
         console.delete();
         synchronized (logLines) {
             logLines.clear();
+        }
+        synchronized (packets) {
+            packets.clear();
+            pendingLevel = -1;
         }
         stopping = false;
         ModemSettings settings = ModemSettings.load(this);
@@ -259,6 +282,20 @@ public final class DireWolfService extends Service {
 
     private void handleLine(String line) {
         addLogLine(line);
+        // Dire Wolf prints "... audio level = 200(73/70) ..." then "[0.4] CALL>DEST,PATH:info" for a packet
+        // heard, and "[0L] CALL>DEST:info" for one it sends.
+        int lv = line.indexOf("audio level = ");
+        if (lv >= 0) {
+            int end = lv + "audio level = ".length(), stop = end;
+            while (stop < line.length() && Character.isDigit(line.charAt(stop))) stop++;
+            try { pendingLevel = Integer.parseInt(line.substring(end, stop)); } catch (NumberFormatException e) { pendingLevel = -1; }
+        } else if (line.startsWith("[") && line.indexOf("] ") > 0 && line.indexOf('>') > 0) {
+            boolean sent = line.substring(0, line.indexOf("] ")).endsWith("L");
+            String time = new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date());
+            String level = sent ? "sent" : pendingLevel >= 0 ? "level " + pendingLevel + levelNote(pendingLevel) : "heard";
+            addPacket(time + "  " + level + "\n" + line.substring(line.indexOf("] ") + 2));
+            pendingLevel = -1;
+        }
         if (line.startsWith("Ready to accept KISS TCP client")) {
             if (!status.startsWith("Running — program attached")) status = "Running — waiting for a program on port " + kissPort;
         } else if (line.startsWith("Attached to KISS TCP client")) {
@@ -289,6 +326,11 @@ public final class DireWolfService extends Service {
     /** Dire Wolf is running with the PTT serial port open (the Test PTT button must wait). */
     static boolean pttInUse() {
         return pttInUse;
+    }
+
+    /** Plain words for Dire Wolf's audio level (good is roughly 30 to 70). */
+    private static String levelNote(int level) {
+        return level > 100 ? " (too loud)" : level < 15 ? " (too quiet)" : "";
     }
 
     private void stopDireWolf() {

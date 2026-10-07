@@ -40,7 +40,7 @@ public final class MainActivity extends Activity {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView statusView;
-    private TextView logView;
+    private TextView logView, packetsView;
     private Button startButton;
     private Button stopButton;
     private TextView portsView;
@@ -63,7 +63,10 @@ public final class MainActivity extends Activity {
             boolean stopped = status.startsWith("Stopped") || status.startsWith("Could not");
             startButton.setEnabled(stopped);
             stopButton.setEnabled(!stopped && !status.startsWith("Stopping"));
-            logView.setText(String.join("\n", DireWolfService.lastLogLines(LOG_LINES_SHOWN)));
+            List<String> heard = DireWolfService.packets();
+            packetsView.setText(heard.isEmpty() ? "None yet." : String.join("\n\n", heard));
+            if (logView.getVisibility() == android.view.View.VISIBLE)
+                logView.setText(String.join("\n", DireWolfService.lastLogLines(LOG_LINES_SHOWN)));
             handler.postDelayed(this, 1000);
         }
     };
@@ -98,15 +101,34 @@ public final class MainActivity extends Activity {
         buttons.addView(stopButton);
         root.addView(buttons);
 
-        TextView logTitle = new TextView(this);
-        logTitle.setText("Dire Wolf log (last " + LOG_LINES_SHOWN + " lines)");
-        root.addView(logTitle);
+        TextView packetsTitle = new TextView(this);
+        packetsTitle.setText("Packets (newest first)");
+        packetsTitle.setTextSize(20);
+        packetsTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        root.addView(packetsTitle);
+        hint(root, "Audio level: good is about 30 to 70.");
+
+        packetsView = new TextView(this);
+        packetsView.setTextSize(18);
+        packetsView.setTextIsSelectable(true);
+        root.addView(packetsView);
+
+        Button showLog = new Button(this);
+        showLog.setText("Show full Dire Wolf log");
+        root.addView(showLog);
 
         logView = new TextView(this);
         logView.setTypeface(Typeface.MONOSPACE);
-        logView.setTextSize(10);
+        logView.setTextSize(12);
         logView.setTextIsSelectable(true);
+        logView.setVisibility(android.view.View.GONE);
         root.addView(logView);
+        showLog.setOnClickListener(v -> {
+            boolean show = logView.getVisibility() != android.view.View.VISIBLE;
+            logView.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
+            showLog.setText(show ? "Hide full Dire Wolf log" : "Show full Dire Wolf log");
+            if (show) logView.setText(String.join("\n", DireWolfService.lastLogLines(LOG_LINES_SHOWN)));
+        });
 
         addPttTest(root, pad);
         addSettings(root, pad);
