@@ -56,8 +56,24 @@ NDK=/c/Users/Robert/AppData/Local/Android/Sdk/ndk/28.2.13676358
 
 ## The app (step B3)
 
-Build: `gradlew.bat assembleDebug assembleRelease` in this folder (it builds and strips the program first). Release APK 277,320 bytes unsigned.
+Build: `gradlew.bat assembleDebug assembleRelease` in this folder (it builds and strips the program first). Release APK 282,584 bytes unsigned (with the settings form).
 
-Settings the service writes to `direwolf.conf` in the app's files: `ADEVICE default`, `ARATE 48000`, `ACHANNELS 1`, `MYCALL NOCALL` (KISS programs supply their own callsigns), `MODEM 1200`, `AGWPORT 8100`, `KISSPORT 0` (removes Dire Wolf's default KISS port 8001), `KISSPORT 8101`. No PTT yet.
+### Settings (on the app screen, under **Settings**, saved with **Save settings**, used at the next **Start**)
 
-Checked on the phone 2026-10-07: **Start** asks for the microphone (and notification) permission, then shows "Running — waiting for a program on port 8101" and the "Dire Wolf modem running" notification; `/proc/net/tcp` shows only 127.0.0.1:8100 and 127.0.0.1:8101 listening; a connection from the phone itself is "Attached to KISS TCP client"; a connection from the PC over Wi-Fi to the phone's address, port 8101, is refused; **Stop** ends the program, closes both ports, removes the notification and shows "Stopped".
+| Field | Dire Wolf setting | Default |
+|---|---|---|
+| **KISS port (1024 to 65535)** | `KISSPORT` (after `KISSPORT 0`, which removes Dire Wolf's default 8001) | 8101 |
+| **AGW port (1024 to 65535)** | `AGWPORT` | 8100 |
+| **Sound input (receive)** / **Sound output (transmit)** | `ADEVICE` (Android audio device ID, or `default`) | Phone's default |
+| **Speed (baud)**: 300, 1200, 9600 | `MODEM` | 1200 |
+| **Callsign (MYCALL; empty for NOCALL)** | `MYCALL` | NOCALL |
+| **TX delay, ms** / **TX tail, ms** | `TXDELAY` / `TXTAIL` (10 ms units) | 300 / 100 |
+| **Persistence, 0 to 255** / **Slot time, ms** / **Extra wait before sending, ms** | `PERSIST` / `SLOTTIME` / `DWAIT` | 63 / 100 / 0 |
+| **Error correction (sending)**: Off, FX.25 with 16, 32 or 64 check bytes, IL2P | `FX25TX 16/32/64`, `IL2PTX 1` | Off |
+| **Advanced: extra Dire Wolf setting lines** | added at the end of the file | empty |
+
+Always written: `ARATE 48000`, `ACHANNELS 1`, `CHANNEL 0`. No PTT yet.
+
+Checks on save: ports 1024 to 65535 and different from each other, callsign up to 6 letters and digits with an optional -SSID 0 to 15, times 0 to 2550 ms, persistence 0 to 255. A sound device is saved by ID and name; at Start, a device that is no longer present is looked up by name (a re-plugged USB sound card gets a new ID), else the phone's default is used and the log says so.
+
+Checked on the phone 2026-10-07: **Start** asks for the microphone (and notification) permission, then shows "Running — waiting for a program on port 8101" and the "Dire Wolf modem running" notification; `/proc/net/tcp` shows only 127.0.0.1:8100 and 127.0.0.1:8101 listening; a connection from the phone itself is "Attached to KISS TCP client"; a connection from the PC over Wi-Fi to the phone's address, port 8101, is refused; **Stop** ends the program, closes both ports, removes the notification and shows "Stopped". Settings: KISS port 8111 saved and used (Dire Wolf "Ready to accept KISS TCP client application 0 on port 8111", 127.0.0.1:8111 listening, settings file matches the screen); KISS port 8100 refused with "Not saved: KISS port and AGW port must be different."; back to 8101; the **Sound input** list offers "Phone's default" and the two built-in microphones (devices 19 and 21).

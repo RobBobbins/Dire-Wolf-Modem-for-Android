@@ -14,9 +14,17 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
+import android.text.InputType;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.io.ByteArrayOutputStream;
@@ -34,6 +42,12 @@ public final class MainActivity extends Activity {
     private TextView logView;
     private Button startButton;
     private Button stopButton;
+    private TextView portsView;
+    private TextView settingsNote;
+    private EditText kissPort, agwPort, callsign, txDelay, txTail, persist, slotTime, dwait, advanced;
+    private Spinner inputDevice, outputDevice, fec;
+    private RadioGroup speed;
+    private final List<AudioDeviceInfo> inputs = new ArrayList<>(), outputs = new ArrayList<>();
 
     private final Runnable refresh = new Runnable() {
         @Override
@@ -61,11 +75,8 @@ public final class MainActivity extends Activity {
         statusView.setTextSize(16);
         root.addView(statusView);
 
-        TextView ports = new TextView(this);
-        ports.setText("KISS port " + DireWolfService.KISS_PORT
-                + " · AGW port " + DireWolfService.AGW_PORT + " · this phone only · 1200 baud · "
-                + "phone's own microphone and speaker");
-        root.addView(ports);
+        portsView = new TextView(this);
+        root.addView(portsView);
 
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
@@ -91,6 +102,8 @@ public final class MainActivity extends Activity {
         logView.setTextIsSelectable(true);
         root.addView(logView);
 
+        addSettings(root, pad);
+
         TextView about = new TextView(this);
         about.setPadding(0, pad, 0, 0);
         about.setText("Unofficial Android build of Dire Wolf by John Langner, WB2OSZ, "
@@ -109,9 +122,193 @@ public final class MainActivity extends Activity {
         setContentView(scroll);
     }
 
+    /** The settings form: ports, sound, speed, callsign, timing, error correction, advanced lines. */
+    private void addSettings(LinearLayout root, int pad) {
+        ModemSettings s = ModemSettings.load(this);
+        TextView title = new TextView(this);
+        title.setText("Settings");
+        title.setTextSize(18);
+        title.setPadding(0, pad, 0, pad / 4);
+        root.addView(title);
+        TextView when = new TextView(this);
+        when.setText("Changes are used at the next Start. Programs on this phone (FieldMail) must use the same KISS port.");
+        root.addView(when);
+
+        kissPort = number(root, "KISS port (1024 to 65535)", s.kissPort);
+        agwPort = number(root, "AGW port (1024 to 65535)", s.agwPort);
+
+        AudioManager am = getSystemService(AudioManager.class);
+        inputDevice = deviceChoice(root, "Sound input (receive)", am.getDevices(AudioManager.GET_DEVICES_INPUTS), inputs, s.inputId, s.inputName);
+        outputDevice = deviceChoice(root, "Sound output (transmit)", am.getDevices(AudioManager.GET_DEVICES_OUTPUTS), outputs, s.outputId, s.outputName);
+
+        label(root, "Speed (baud)");
+        speed = new RadioGroup(this);
+        speed.setOrientation(RadioGroup.HORIZONTAL);
+        for (int baud : ModemSettings.SPEEDS) {
+            RadioButton b = new RadioButton(this);
+            b.setText(String.valueOf(baud));
+            b.setId(baud);
+            speed.addView(b);
+        }
+        speed.check(s.speed);
+        root.addView(speed);
+        hint(root, "1200: VHF/UHF packet (Winlink gateways). 300: HF packet. 9600: needs the radio's data port.");
+
+        callsign = text(root, "Callsign (MYCALL; empty for NOCALL)", s.callsign, false);
+        callsign.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+        hint(root, "Used for Dire Wolf's own transmissions such as beacons. FieldMail sends its own callsign.");
+
+        txDelay = number(root, "TX delay, ms (TXDELAY; default 300)", s.txDelayMs);
+        txTail = number(root, "TX tail, ms (TXTAIL; default 100)", s.txTailMs);
+        persist = number(root, "Persistence, 0 to 255 (PERSIST; default 63)", s.persist);
+        slotTime = number(root, "Slot time, ms (SLOTTIME; default 100)", s.slotTimeMs);
+        dwait = number(root, "Extra wait before sending, ms (DWAIT; default 0)", s.dwaitMs);
+        hint(root, "Dire Wolf counts these times in 10 ms steps.");
+
+        label(root, "Error correction (sending)");
+        fec = new Spinner(this);
+        fec.setAdapter(listAdapter(java.util.Arrays.asList(ModemSettings.FEC_LABELS)));
+        fec.setSelection(s.fec);
+        root.addView(fec);
+        hint(root, "FX.25 still works with stations that do not have it. IL2P works only with stations that also use IL2P.");
+
+        advanced = text(root, "Advanced: extra Dire Wolf setting lines", s.advanced, true);
+        hint(root, "Added at the end of Dire Wolf's settings file, one setting per line. A wrong line can stop Dire Wolf from starting; its log shows why.");
+
+        Button save = new Button(this);
+        save.setText("Save settings");
+        save.setOnClickListener(v -> saveSettings());
+        root.addView(save);
+        settingsNote = new TextView(this);
+        root.addView(settingsNote);
+    }
+
+    private void saveSettings() {
+        ModemSettings s = new ModemSettings();
+        try {
+            s.kissPort = Integer.parseInt(kissPort.getText().toString().trim());
+            s.agwPort = Integer.parseInt(agwPort.getText().toString().trim());
+            s.txDelayMs = Integer.parseInt(txDelay.getText().toString().trim());
+            s.txTailMs = Integer.parseInt(txTail.getText().toString().trim());
+            s.persist = Integer.parseInt(persist.getText().toString().trim());
+            s.slotTimeMs = Integer.parseInt(slotTime.getText().toString().trim());
+            s.dwaitMs = Integer.parseInt(dwait.getText().toString().trim());
+        } catch (NumberFormatException e) {
+            settingsNote.setText("Not saved: every number field needs a whole number.");
+            return;
+        }
+        int in = inputDevice.getSelectedItemPosition(), out = outputDevice.getSelectedItemPosition();
+        s.inputId = in <= 0 ? 0 : inputs.get(in - 1).getId();
+        s.inputName = in <= 0 ? "" : describe(inputs.get(in - 1));
+        s.outputId = out <= 0 ? 0 : outputs.get(out - 1).getId();
+        s.outputName = out <= 0 ? "" : describe(outputs.get(out - 1));
+        s.speed = speed.getCheckedRadioButtonId();
+        s.callsign = callsign.getText().toString().trim().toUpperCase(java.util.Locale.US);
+        s.fec = fec.getSelectedItemPosition();
+        s.advanced = advanced.getText().toString();
+        String problem = s.problem();
+        if (problem != null) {
+            settingsNote.setText("Not saved: " + problem);
+            return;
+        }
+        s.save(this);
+        String state = DireWolfService.status();
+        boolean running = !(state.startsWith("Stopped") || state.startsWith("Could not"));
+        settingsNote.setText(running ? "Saved. Stop and Start again to use them." : "Saved. They are used at the next Start.");
+        showPorts();
+    }
+
+    private void showPorts() {
+        ModemSettings s = ModemSettings.load(this);
+        portsView.setText("KISS port " + s.kissPort + " · AGW port " + s.agwPort + " · this phone only · "
+                + s.speed + " baud · sound in: " + (s.inputId == 0 ? "phone's default" : s.inputName)
+                + " · sound out: " + (s.outputId == 0 ? "phone's default" : s.outputName));
+    }
+
+    /** A sound device as shown in the lists: type, then product name. */
+    static String describe(AudioDeviceInfo d) {
+        String type;
+        switch (d.getType()) {
+            case AudioDeviceInfo.TYPE_BUILTIN_MIC: type = "Built-in microphone"; break;
+            case AudioDeviceInfo.TYPE_BUILTIN_SPEAKER: type = "Built-in speaker"; break;
+            case AudioDeviceInfo.TYPE_BUILTIN_EARPIECE: type = "Earpiece"; break;
+            case AudioDeviceInfo.TYPE_USB_DEVICE: type = "USB sound card"; break;
+            case AudioDeviceInfo.TYPE_USB_HEADSET: type = "USB headset"; break;
+            case AudioDeviceInfo.TYPE_WIRED_HEADSET: type = "Wired headset"; break;
+            case AudioDeviceInfo.TYPE_WIRED_HEADPHONES: type = "Wired headphones"; break;
+            case AudioDeviceInfo.TYPE_BLUETOOTH_SCO: type = "Bluetooth (calls)"; break;
+            case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP: type = "Bluetooth (media)"; break;
+            default: type = "Type " + d.getType();
+        }
+        CharSequence name = d.getProductName();
+        return type + (name == null || name.length() == 0 ? "" : ": " + name);
+    }
+
+    private Spinner deviceChoice(LinearLayout root, String title, AudioDeviceInfo[] devices, List<AudioDeviceInfo> kept, int savedId, String savedName) {
+        label(root, title);
+        List<String> names = new ArrayList<>();
+        names.add("Phone's default");
+        int selected = 0;
+        for (AudioDeviceInfo dev : devices) {
+            int t = dev.getType();
+            // Telephony, hearing-aid and similar routes are not usable for a modem.
+            if (t == AudioDeviceInfo.TYPE_TELEPHONY || t == AudioDeviceInfo.TYPE_FM_TUNER || t == AudioDeviceInfo.TYPE_REMOTE_SUBMIX) continue;
+            kept.add(dev);
+            names.add(describe(dev) + " (device " + dev.getId() + ")");
+            if (dev.getId() == savedId || (selected == 0 && savedId != 0 && describe(dev).equals(savedName))) selected = kept.size();
+        }
+        Spinner spinner = new Spinner(this);
+        spinner.setAdapter(listAdapter(names));
+        spinner.setSelection(selected);
+        root.addView(spinner);
+        return spinner;
+    }
+
+    /** Spinner adapter whose shown item uses the theme's text colour. */
+    private ArrayAdapter<String> listAdapter(List<String> items) {
+        ArrayAdapter<String> a = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, items);
+        a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        return a;
+    }
+
+    private EditText number(LinearLayout root, String title, int value) {
+        EditText e = text(root, title, String.valueOf(value), false);
+        e.setInputType(InputType.TYPE_CLASS_NUMBER);
+        return e;
+    }
+
+    private EditText text(LinearLayout root, String title, String value, boolean multiLine) {
+        label(root, title);
+        EditText e = new EditText(this);
+        e.setText(value);
+        if (multiLine) {
+            e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            e.setMinLines(3);
+            e.setTypeface(Typeface.MONOSPACE);
+        }
+        root.addView(e);
+        return e;
+    }
+
+    private void label(LinearLayout root, String title) {
+        TextView t = new TextView(this);
+        t.setText(title);
+        t.setTypeface(Typeface.DEFAULT_BOLD);
+        t.setPadding(0, (int) (10 * getResources().getDisplayMetrics().density), 0, 0);
+        root.addView(t);
+    }
+
+    private void hint(LinearLayout root, String text) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextSize(12);
+        root.addView(t);
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        showPorts();
         handler.post(refresh);
     }
 

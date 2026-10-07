@@ -11,6 +11,8 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.IBinder;
 
@@ -30,8 +32,8 @@ import java.util.concurrent.TimeUnit;
  */
 public final class DireWolfService extends Service {
     public static final String ACTION_STOP = "org.w3bguru.direwolfmodem.STOP";
-    public static final int KISS_PORT = 8101;
-    public static final int AGW_PORT = 8100;
+    /** Ports of the run in progress (from the settings at Start). */
+    private static volatile int kissPort, agwPort;
 
     private static final String CHANNEL_ID = "direwolf";
     private static final int NOTIFICATION_ID = 1;
@@ -86,6 +88,9 @@ public final class DireWolfService extends Service {
     }
 
     private void startInForeground() {
+        ModemSettings s = ModemSettings.load(this);
+        kissPort = s.kissPort;
+        agwPort = s.agwPort;
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel(
                 CHANNEL_ID, "Dire Wolf modem", NotificationManager.IMPORTANCE_LOW));
@@ -94,7 +99,7 @@ public final class DireWolfService extends Service {
         Notification n = new Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .setContentTitle("Dire Wolf modem running")
-                .setContentText("KISS " + KISS_PORT + " / AGW " + AGW_PORT + " on this phone")
+                .setContentText("KISS " + kissPort + " / AGW " + agwPort + " on this phone")
                 .setContentIntent(open)
                 .setOngoing(true)
                 .build();
@@ -105,18 +110,22 @@ public final class DireWolfService extends Service {
         }
     }
 
-    /** Dire Wolf settings: phone's default microphone and speaker, 1200 baud, ports on this phone only. */
-    static String config() {
-        return "ADEVICE default\n"
-                + "ARATE 48000\n"
-                + "ACHANNELS 1\n"
-                + "CHANNEL 0\n"
-                + "MYCALL NOCALL\n"
-                + "MODEM 1200\n"
-                + "AGWPORT " + AGW_PORT + "\n"
-                // KISSPORT 0 removes Dire Wolf's default KISS port 8001, so only KISS_PORT is open.
-                + "KISSPORT 0\n"
-                + "KISSPORT " + KISS_PORT + "\n";
+    /**
+     * The device to use: the saved ID if that device is present, else a present device with
+     * the saved name (a re-plugged USB sound card gets a new ID), else 0 (phone's default).
+     */
+    private int presentDevice(int flags, int savedId, String savedName, String what) {
+        if (savedId == 0) return 0;
+        AudioManager am = getSystemService(AudioManager.class);
+        AudioDeviceInfo[] devices = am.getDevices(flags);
+        for (AudioDeviceInfo dev : devices) if (dev.getId() == savedId) return savedId;
+        for (AudioDeviceInfo dev : devices)
+            if (MainActivity.describe(dev).equals(savedName)) {
+                addLogLine("Sound " + what + ": \"" + savedName + "\" is now device " + dev.getId() + ".");
+                return dev.getId();
+            }
+        addLogLine("Sound " + what + ": \"" + savedName + "\" is not connected; using the phone's default.");
+        return 0;
     }
 
     private void startDireWolf() {
@@ -129,11 +138,16 @@ public final class DireWolfService extends Service {
             logLines.clear();
         }
         stopping = false;
+        ModemSettings settings = ModemSettings.load(this);
+        int input = presentDevice(AudioManager.GET_DEVICES_INPUTS, settings.inputId, settings.inputName, "input");
+        int output = presentDevice(AudioManager.GET_DEVICES_OUTPUTS, settings.outputId, settings.outputName, "output");
         try {
             try (FileOutputStream out = new FileOutputStream(conf)) {
-                out.write(config().getBytes(StandardCharsets.US_ASCII));
+                out.write(settings.config(input, output).getBytes(StandardCharsets.UTF_8));
             }
             // -t 0: no colour codes in the output.
+            addLogLine("Settings: " + settings.speed + " baud, KISS " + settings.kissPort + ", AGW " + settings.agwPort
+                    + ", sound in " + (input == 0 ? "default" : input) + ", out " + (output == 0 ? "default" : output));
             ProcessBuilder pb = new ProcessBuilder(exe.getAbsolutePath(), "-t", "0", "-c", conf.getAbsolutePath());
             pb.directory(getFilesDir());
             pb.redirectErrorStream(true);
@@ -196,11 +210,11 @@ public final class DireWolfService extends Service {
     private void handleLine(String line) {
         addLogLine(line);
         if (line.startsWith("Ready to accept KISS TCP client")) {
-            if (!status.startsWith("Running — program attached")) status = "Running — waiting for a program on port " + KISS_PORT;
+            if (!status.startsWith("Running — program attached")) status = "Running — waiting for a program on port " + kissPort;
         } else if (line.startsWith("Attached to KISS TCP client")) {
             status = "Running — program attached";
         } else if (line.contains("has gone away")) {
-            status = "Running — waiting for a program on port " + KISS_PORT;
+            status = "Running — waiting for a program on port " + kissPort;
         } else if (line.startsWith("Could not open audio device")) {
             status = "Sound problem — see log";
         }
