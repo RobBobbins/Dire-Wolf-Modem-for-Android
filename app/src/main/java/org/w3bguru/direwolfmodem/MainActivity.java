@@ -45,7 +45,7 @@ public final class MainActivity extends Activity {
     private Button stopButton;
     private TextView portsView;
     private TextView settingsNote;
-    private EditText kissPort, agwPort, callsign, txDelay, txTail, persist, slotTime, dwait, advanced;
+    private EditText kissPort, agwPort, callsign, txDelay, txTail, persist, slotTime, dwait, advanced, inputLevel;
     private EditText beaconMinutes, beaconSymbol, beaconComment;
     private CheckBox beacons;
     private Spinner inputDevice, outputDevice, fec, ptt, pttPort;
@@ -234,6 +234,9 @@ public final class MainActivity extends Activity {
 
         AudioManager am = getSystemService(AudioManager.class);
         inputDevice = deviceChoice(root, "Sound input (receive)", am.getDevices(AudioManager.GET_DEVICES_INPUTS), inputs, s.inputId, s.inputName);
+        inputLevel = number(root, "Input level, % (5 to 400; default 100)", s.inputPercent);
+        hint(root, "Turns the received sound down (below 100) or up (above 100) before Dire Wolf decodes it. "
+                + "Aim for an audio level of about 50 in the Packets list: for example, level 200 at 100 % needs about 25 %.");
         outputDevice = deviceChoice(root, "Sound output (transmit)", am.getDevices(AudioManager.GET_DEVICES_OUTPUTS), outputs, s.outputId, s.outputName);
 
         label(root, "Speed (baud)");
@@ -327,6 +330,7 @@ public final class MainActivity extends Activity {
             s.persist = Integer.parseInt(persist.getText().toString().trim());
             s.slotTimeMs = Integer.parseInt(slotTime.getText().toString().trim());
             s.dwaitMs = Integer.parseInt(dwait.getText().toString().trim());
+            s.inputPercent = Integer.parseInt(inputLevel.getText().toString().trim());
             s.beaconMinutes = Integer.parseInt(beaconMinutes.getText().toString().trim());
         } catch (NumberFormatException e) {
             settingsNote.setText("Not saved: every number field needs a whole number.");

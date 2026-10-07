@@ -128,3 +128,9 @@ Checked on the phone (Digirig, no radio): port list "CP2102N USB to UART Bridge 
 The screen shows **Packets (newest first)** in large text: one entry per packet heard or sent, with the time and Dire Wolf's audio level ("level 200 (too loud)"; good is about 30 to 70; "too loud" above 100, "too quiet" below 15). Dire Wolf's full output is behind **Show full Dire Wolf log**. Release APK 317,509 bytes unsigned.
 
 First radio test (2026-10-07, receive only): FT-817 in PKT mode on 144.390 MHz, Digirig audio into the phone, PTT None. Decoded APRS packets via the VA3KMS digipeater (GBTWP-2 weather station, VA3TM, KA8POG), each at audio level 200: too loud, still decoded. Found: **Sound output (transmit)** "Phone's default" is the Digirig while it is plugged in (Android's default output); choose the built-in speaker to keep sound off the radio.
+
+## Input level (2026-10-07)
+
+Setting **Input level, % (5 to 400; default 100)**: the app passes it to Dire Wolf as the environment variable `DIREWOLF_INPUT_PERCENT`, and `port/audio_aaudio.c` scales the sound card samples by it before Dire Wolf decodes them (Dire Wolf's own files are unchanged). For radios whose fixed receive level is too loud or too quiet: the FT-817's DATA socket gives a fixed level with no menu to change it.
+
+Checked on the air (2 m APRS, FT-817, Digirig): at 100 % every packet read audio level 200 with Dire Wolf's "too high" warning (16 packets, run `aprs-rx-01`); at 25 % the same stations read level 50, no warning, still decoding (VE3NOZ-1, VA3KMS, VA3TM, K8JJT-9). Every packet reading exactly 200 at 100 % suggests the sound may already be at full scale in the Digirig's input; the level number is now right, and decoding continued. Release APK 318,225 bytes unsigned.

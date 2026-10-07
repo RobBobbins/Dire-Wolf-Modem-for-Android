@@ -41,6 +41,8 @@ final class ModemSettings {
     int ptt;
     /** The PTT serial port's key (UsbSerialPtt.key); empty = the first USB serial port found. */
     String pttPort = "";
+    /** Input level in percent (sound card samples scaled before Dire Wolf decodes them); 100 = unchanged. */
+    int inputPercent = 100;
 
     static ModemSettings load(Context context) {
         SharedPreferences p = context.getSharedPreferences("settings", Context.MODE_PRIVATE);
@@ -66,6 +68,7 @@ final class ModemSettings {
         s.beaconComment = p.getString("beaconComment", "");
         s.ptt = p.getInt("ptt", 0);
         s.pttPort = p.getString("pttPort", "");
+        s.inputPercent = p.getInt("inputPercent", 100);
         return s;
     }
 
@@ -80,7 +83,7 @@ final class ModemSettings {
                 .putInt("fec", fec).putString("advanced", advanced)
                 .putBoolean("beacons", beacons).putInt("beaconMinutes", beaconMinutes)
                 .putString("beaconSymbol", beaconSymbol).putString("beaconComment", beaconComment)
-                .putInt("ptt", ptt).putString("pttPort", pttPort)
+                .putInt("ptt", ptt).putString("pttPort", pttPort).putInt("inputPercent", inputPercent)
                 .apply();
     }
 
@@ -107,6 +110,7 @@ final class ModemSettings {
             return "Beacon comment: up to 40 plain characters, no \" marks.";
         if (beacons && callsign.isEmpty()) return "Position beacons need your callsign in Callsign (MYCALL).";
         if (ptt < 0 || ptt >= PTT_LABELS.length) return "Unknown PTT choice.";
+        if (inputPercent < 5 || inputPercent > 400) return "Input level must be 5 to 400 %.";
         return null;
     }
 

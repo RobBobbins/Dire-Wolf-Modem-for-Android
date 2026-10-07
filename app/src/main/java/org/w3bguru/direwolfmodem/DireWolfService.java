@@ -214,6 +214,7 @@ public final class DireWolfService extends Service {
                     + ", sound in " + (input == 0 ? "default" : input) + ", out " + (output == 0 ? "default" : output));
             ProcessBuilder pb = new ProcessBuilder(exe.getAbsolutePath(), "-t", "0", "-c", conf.getAbsolutePath());
             pb.directory(getFilesDir());
+            pb.environment().put("DIREWOLF_INPUT_PERCENT", String.valueOf(settings.inputPercent));
             pb.redirectErrorStream(true);
             pb.redirectOutput(console);
             process = pb.start();

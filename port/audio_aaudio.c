@@ -150,10 +150,26 @@ static AAudioStream *open_stream (int a, struct audio_s *pa, const char *name, a
 }
 
 
+/*
+ * Input level in percent, from the environment variable DIREWOLF_INPUT_PERCENT (set by the
+ * Android app; 100 = unchanged). Sound card samples are scaled by it before Dire Wolf sees them,
+ * for radios whose fixed receive level is too loud or too quiet for the decoder.
+ */
+static int input_percent = 100;
+
 int audio_open (struct audio_s *pa)
 {
 	int a, chan;
 	save_audio_config_p = pa;
+	{
+	  const char *p = getenv("DIREWOLF_INPUT_PERCENT");
+	  int v = p ? atoi(p) : 100;
+	  input_percent = (v >= 1 && v <= 1000) ? v : 100;
+	  if (input_percent != 100) {
+	    text_color_set(DW_COLOR_INFO);
+	    dw_printf ("Input level %d%% (sound card samples scaled before decoding).\n", input_percent);
+	  }
+	}
 	memset (adev, 0, sizeof(adev));
 	for (a = 0; a < MAX_ADEVS; a++) adev[a].udp_sock = -1;
 
@@ -260,6 +276,14 @@ int audio_get (int a)
 	        return (-1);
 	      }
 	      res = r * adev[a].bytes_per_frame;
+	      if (input_percent != 100 && save_audio_config_p->adev[a].bits_per_sample == 16) {
+	        int16_t *smp = (int16_t *)adev[a].inbuf_ptr;
+	        int n = res / 2, i;
+	        for (i = 0; i < n; i++) {
+	          int v = smp[i] * input_percent / 100;
+	          smp[i] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+	        }
+	      }
 	      break;
 	    }
 	    case AUDIO_IN_TYPE_SDR_UDP:
