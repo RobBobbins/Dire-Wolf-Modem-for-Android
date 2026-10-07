@@ -3,6 +3,8 @@
 
     <!-- Dire Wolf's KISS and AGW ports are TCP sockets on this phone only (127.0.0.1). -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Digirig PTT: its CP2102N serial chip over USB (the phone as USB host). -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />

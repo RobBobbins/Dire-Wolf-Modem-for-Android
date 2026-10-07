@@ -105,6 +105,7 @@ public final class MainActivity extends Activity {
         logView.setTextIsSelectable(true);
         root.addView(logView);
 
+        addPttTest(root, pad);
         addSettings(root, pad);
 
         TextView about = new TextView(this);
@@ -123,6 +124,63 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
         setContentView(scroll);
+    }
+
+    /** PTT check: keys the Digirig (RTS on its CP2102N serial chip) for 2 seconds. */
+    private void addPttTest(LinearLayout root, int pad) {
+        TextView title = new TextView(this);
+        title.setText("PTT (Digirig)");
+        title.setTextSize(18);
+        title.setPadding(0, pad, 0, pad / 4);
+        root.addView(title);
+        hint(root, "Keys the radio through the Digirig for 2 seconds, then releases it. "
+                + "With a radio connected this transmits.");
+        Button test = new Button(this);
+        test.setText("Test PTT (2 seconds)");
+        TextView result = new TextView(this);
+        test.setOnClickListener(v -> testPtt(test, result));
+        root.addView(test);
+        root.addView(result);
+    }
+
+    private void testPtt(Button test, TextView result) {
+        android.hardware.usb.UsbDevice device = DigirigPtt.findDevice(this);
+        if (device == null) {
+            result.setText("No Digirig serial port (Silicon Labs CP210x) is plugged in.");
+            return;
+        }
+        if (!getSystemService(android.hardware.usb.UsbManager.class).hasPermission(device)) {
+            DigirigPtt.requestPermission(this, device);
+            result.setText("Allow access to the Digirig in Android's box, then tap Test PTT again.");
+            return;
+        }
+        test.setEnabled(false);
+        result.setText("PTT on…");
+        new Thread(() -> {
+            String text;
+            try (DigirigPtt ptt = DigirigPtt.open(this, device)) {
+                boolean before = ptt.rtsOn();
+                ptt.setPtt(true);
+                boolean during = ptt.rtsOn();
+                Thread.sleep(2000);
+                ptt.setPtt(false);
+                boolean after = ptt.rtsOn();
+                text = "RTS (PTT) read back from the Digirig: before " + onOff(before) + ", during " + onOff(during)
+                        + ", after " + onOff(after) + ". "
+                        + (!before && during && !after ? "PTT works." : "Not as expected.");
+            } catch (Exception e) {
+                text = "PTT test failed: " + e.getMessage();
+            }
+            final String shown = text;
+            handler.post(() -> {
+                result.setText(shown);
+                test.setEnabled(true);
+            });
+        }, "ptt-test").start();
+    }
+
+    private static String onOff(boolean on) {
+        return on ? "on" : "off";
     }
 
     /** The settings form: ports, sound, speed, callsign, timing, error correction, advanced lines. */

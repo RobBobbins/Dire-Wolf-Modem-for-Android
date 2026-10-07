@@ -101,3 +101,11 @@ When **Send position beacons (uses GPS)** is on, the service makes a named pipe 
 Checked 2026-10-07 (phone SM-G981W, indoors): Dire Wolf on the phone printed "Location fix is now 3D" (the phone's own NMEA lines are used) and sent `VA3OZO>APDW18:!<position>[`. Acoustic run `b6-02`: Dire Wolf 1.8.1 on the PC decoded 2 beacons from VA3OZO, 61 s apart, the first 26 s after **Start**, audio level 39, symbol `/[`, the phone's latitude and longitude. Release APK 286,964 bytes unsigned.
 
 Dire Wolf's screen output is fully buffered when it goes to a file (`textcolor.c` writes with `fputs` and no flush), so lines can arrive late in the app's log, and can be lost when a run is killed. For PC test evidence use Dire Wolf's `-L <file>` packet log, which is flushed after every packet.
+
+## Digirig on the phone (start of step B5), 2026-10-07
+
+No radio connected. The phone sees the Digirig as two USB devices: a C-Media sound card ("USB PnP Sound Device", 0x0D8C:0x013C; Android type USB headset, output 2860 and input 2864 on this phone) and a Silicon Labs CP2102N serial chip (0x10C4:0xEA60).
+
+- Sound: with **Sound input (receive)** and **Sound output (transmit)** set to the USB headset, the app opened both at 48,000 samples per second and sent 3 test packets (`CBEACON` in the advanced lines); the settings were then put back to **Phone's default**. A separate 14 s run of the command-line program with `-a 3` showed 48.0 k samples per second and 0 errors on the input; the input level rose (15, 8) only while the phone was sending: a small leak of the transmit sound into the input.
+- With the Digirig plugged in, Android sends media and notification sounds to it, and ringtones and alarms to it and the speaker.
+- PTT: **PTT (Digirig)** section, **Test PTT (2 seconds)** (`DigirigPtt.java`): CP210x vendor requests through Android's USB host calls (no library): IFC_ENABLE, SET_MHS for RTS, GET_MDMSTS to read it back. Asks for USB permission on first use. Result on the phone: "RTS (PTT) read back from the Digirig: before off, during on, after off. PTT works." Dire Wolf itself does not key PTT yet. Release APK 288,856 bytes unsigned.
