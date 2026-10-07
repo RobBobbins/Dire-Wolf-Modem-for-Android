@@ -35,10 +35,12 @@ final class ModemSettings {
     int beaconMinutes = 10;
     String beaconSymbol = "/[";
     String beaconComment = "";
-    /** PTT choices: label; 1 = Digirig RTS through the app (PttPipe). */
-    static final String[] PTT_LABELS = {"None (no radio, or the radio's VOX)", "Digirig (RTS on its USB serial port)"};
+    /** PTT choices: 0 none, 1 RTS, 2 DTR of a USB serial port, keyed by the app (PttPipe). */
+    static final String[] PTT_LABELS = {"None (no radio, or the radio's VOX)", "USB serial port, RTS line", "USB serial port, DTR line"};
     static final String PTT_PIPE = "ptt.pipe";
     int ptt;
+    /** The PTT serial port's key (UsbSerialPtt.key); empty = the first USB serial port found. */
+    String pttPort = "";
 
     static ModemSettings load(Context context) {
         SharedPreferences p = context.getSharedPreferences("settings", Context.MODE_PRIVATE);
@@ -63,6 +65,7 @@ final class ModemSettings {
         s.beaconSymbol = p.getString("beaconSymbol", s.beaconSymbol);
         s.beaconComment = p.getString("beaconComment", "");
         s.ptt = p.getInt("ptt", 0);
+        s.pttPort = p.getString("pttPort", "");
         return s;
     }
 
@@ -77,7 +80,7 @@ final class ModemSettings {
                 .putInt("fec", fec).putString("advanced", advanced)
                 .putBoolean("beacons", beacons).putInt("beaconMinutes", beaconMinutes)
                 .putString("beaconSymbol", beaconSymbol).putString("beaconComment", beaconComment)
-                .putInt("ptt", ptt)
+                .putInt("ptt", ptt).putString("pttPort", pttPort)
                 .apply();
     }
 
@@ -126,8 +129,9 @@ final class ModemSettings {
         c.append(String.format(Locale.US, "TXDELAY %d\nTXTAIL %d\nPERSIST %d\nSLOTTIME %d\nDWAIT %d\n",
                 txDelayMs / 10, txTailMs / 10, persist, slotTimeMs / 10, dwaitMs / 10));
         c.append(FEC_LINES[fec]);
-        // Dire Wolf's serial PTT on the app's named pipe (Android patch in ptt.c); PttPipe keys the Digirig.
-        if (ptt == 1) c.append("PTT ").append(PTT_PIPE).append(" RTS\n");
+        // Dire Wolf's serial PTT on the app's named pipe (Android patch in ptt.c); PttPipe sets the
+        // chosen line (RTS or DTR) of the USB serial port when Dire Wolf asks for PTT.
+        if (ptt != 0) c.append("PTT ").append(PTT_PIPE).append(" RTS\n");
         c.append("AGWPORT ").append(agwPort).append('\n');
         // KISSPORT 0 removes Dire Wolf's default KISS port 8001, so only kissPort is open.
         c.append("KISSPORT 0\n");

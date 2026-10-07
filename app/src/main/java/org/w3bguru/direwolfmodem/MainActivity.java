@@ -48,7 +48,10 @@ public final class MainActivity extends Activity {
     private EditText kissPort, agwPort, callsign, txDelay, txTail, persist, slotTime, dwait, advanced;
     private EditText beaconMinutes, beaconSymbol, beaconComment;
     private CheckBox beacons;
-    private Spinner inputDevice, outputDevice, fec, ptt;
+    private Spinner inputDevice, outputDevice, fec, ptt, pttPort;
+    private final List<android.hardware.usb.UsbDevice> pttPorts = new ArrayList<>();
+    /** The saved PTT port when it is not plugged in now (kept on save). */
+    private String savedPttPort = "";
     private RadioGroup speed;
     private final List<AudioDeviceInfo> inputs = new ArrayList<>(), outputs = new ArrayList<>();
 
@@ -126,14 +129,14 @@ public final class MainActivity extends Activity {
         setContentView(scroll);
     }
 
-    /** PTT check: keys the Digirig (RTS on its CP2102N serial chip) for 2 seconds. */
+    /** PTT check: keys the radio through the chosen USB serial port and line for 2 seconds. */
     private void addPttTest(LinearLayout root, int pad) {
         TextView title = new TextView(this);
-        title.setText("PTT (Digirig)");
+        title.setText("PTT test");
         title.setTextSize(18);
         title.setPadding(0, pad, 0, pad / 4);
         root.addView(title);
-        hint(root, "Keys the radio through the Digirig for 2 seconds, then releases it. "
+        hint(root, "Keys the radio for 2 seconds through the saved PTT setting (USB serial port and line), then releases it. "
                 + "With a radio connected this transmits.");
         Button test = new Button(this);
         test.setText("Test PTT (2 seconds)");
@@ -144,32 +147,37 @@ public final class MainActivity extends Activity {
     }
 
     private void testPtt(Button test, TextView result) {
-        android.hardware.usb.UsbDevice device = DigirigPtt.findDevice(this);
+        ModemSettings saved = ModemSettings.load(this);
+        if (saved.ptt == 0) {
+            result.setText("PTT is set to None in Settings. Choose the RTS or DTR line there and tap Save settings.");
+            return;
+        }
+        android.hardware.usb.UsbDevice device = UsbSerialPtt.find(this, saved.pttPort);
         if (device == null) {
-            result.setText("No Digirig serial port (Silicon Labs CP210x) is plugged in.");
+            result.setText("The PTT serial port is not plugged in (or no supported USB serial port is).");
             return;
         }
         if (DireWolfService.pttInUse()) {
-            result.setText("The modem is running and is using the Digirig for PTT. Tap Stop first.");
+            result.setText("The modem is running and is using the PTT serial port. Tap Stop first.");
             return;
         }
         if (!getSystemService(android.hardware.usb.UsbManager.class).hasPermission(device)) {
-            DigirigPtt.requestPermission(this, device);
-            result.setText("Allow access to the Digirig in Android's box, then tap Test PTT again.");
+            UsbSerialPtt.requestPermission(this, device);
+            result.setText("Allow access to the USB serial port in Android's box, then tap Test PTT again.");
             return;
         }
         test.setEnabled(false);
         result.setText("PTT on…");
         new Thread(() -> {
             String text;
-            try (DigirigPtt ptt = DigirigPtt.open(this, device)) {
-                boolean before = ptt.rtsOn();
+            try (UsbSerialPtt ptt = UsbSerialPtt.open(this, device, saved.ptt == 2)) {
+                boolean before = ptt.pttOn();
                 ptt.setPtt(true);
-                boolean during = ptt.rtsOn();
+                boolean during = ptt.pttOn();
                 Thread.sleep(2000);
                 ptt.setPtt(false);
-                boolean after = ptt.rtsOn();
-                text = "RTS (PTT) read back from the Digirig: before " + onOff(before) + ", during " + onOff(during)
+                boolean after = ptt.pttOn();
+                text = ptt.line() + " (PTT) read back from " + UsbSerialPtt.label(UsbSerialPtt.key(device)) + ": before " + onOff(before) + ", during " + onOff(during)
                         + ", after " + onOff(after) + ". "
                         + (!before && during && !after ? "PTT works." : "Not as expected.");
             } catch (Exception e) {
@@ -235,7 +243,27 @@ public final class MainActivity extends Activity {
         ptt.setAdapter(listAdapter(java.util.Arrays.asList(ModemSettings.PTT_LABELS)));
         ptt.setSelection(s.ptt);
         root.addView(ptt);
-        hint(root, "Digirig: Dire Wolf keys the radio for each transmission (PTT RTS). Tap Test PTT once first so Android lets the app use the Digirig.");
+        hint(root, "Dire Wolf keys the radio for each transmission on this line of the USB serial port below. Most interfaces use RTS; check your interface's manual. Tap Test PTT once first so Android lets the app use the port.");
+        label(root, "PTT serial port");
+        pttPort = new Spinner(this);
+        List<String> portNames = new ArrayList<>();
+        portNames.add("First USB serial port found");
+        int portSelected = 0;
+        for (com.hoho.android.usbserial.driver.UsbSerialDriver d : UsbSerialPtt.ports(this)) {
+            android.hardware.usb.UsbDevice dev = d.getDevice();
+            pttPorts.add(dev);
+            String key = UsbSerialPtt.key(dev);
+            portNames.add(UsbSerialPtt.label(key) + String.format(java.util.Locale.US, " (USB %04X:%04X)", dev.getVendorId(), dev.getProductId()));
+            if (key.equals(s.pttPort)) portSelected = pttPorts.size();
+        }
+        if (!s.pttPort.isEmpty() && portSelected == 0) {
+            portNames.add(UsbSerialPtt.label(s.pttPort) + " (not plugged in)");
+            portSelected = portNames.size() - 1;
+        }
+        savedPttPort = s.pttPort;
+        pttPort.setAdapter(listAdapter(portNames));
+        pttPort.setSelection(portSelected);
+        root.addView(pttPort);
 
         label(root, "Error correction (sending)");
         fec = new Spinner(this);
@@ -291,6 +319,8 @@ public final class MainActivity extends Activity {
         s.callsign = callsign.getText().toString().trim().toUpperCase(java.util.Locale.US);
         s.fec = fec.getSelectedItemPosition();
         s.ptt = ptt.getSelectedItemPosition();
+        int portPos = pttPort.getSelectedItemPosition();
+        s.pttPort = portPos <= 0 ? "" : portPos <= pttPorts.size() ? UsbSerialPtt.key(pttPorts.get(portPos - 1)) : savedPttPort;
         s.advanced = advanced.getText().toString();
         s.beacons = beacons.isChecked();
         s.beaconSymbol = beaconSymbol.getText().toString().trim();

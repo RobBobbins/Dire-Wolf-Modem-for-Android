@@ -49,7 +49,7 @@ public final class DireWolfService extends Service {
     private Thread watcher;
     /** Feeds the phone's position to Dire Wolf while position beacons are on. */
     private GpsFeed gps;
-    /** Keys the Digirig for Dire Wolf while PTT is set to Digirig. */
+    /** Keys the radio through a USB serial port for Dire Wolf while PTT is set. */
     private PttPipe pttPipe;
     private static volatile boolean pttInUse;
     private volatile boolean stopping;
@@ -161,17 +161,18 @@ public final class DireWolfService extends Service {
             settings.beacons = false;
         }
         File pttFile = new File(getFilesDir(), ModemSettings.PTT_PIPE);
-        if (settings.ptt == 1) {
+        if (settings.ptt != 0) {
             try {
-                android.hardware.usb.UsbDevice device = DigirigPtt.findDevice(this);
-                if (device == null) throw new IllegalStateException("no Digirig serial port is plugged in");
+                android.hardware.usb.UsbDevice device = UsbSerialPtt.find(this, settings.pttPort);
+                if (device == null) throw new IllegalStateException("the PTT serial port is not plugged in");
                 if (!getSystemService(android.hardware.usb.UsbManager.class).hasPermission(device))
-                    throw new IllegalStateException("the app may not use the Digirig yet (tap Test PTT once and allow it)");
+                    throw new IllegalStateException("the app may not use the PTT serial port yet (tap Test PTT once and allow it)");
                 PttPipe.makePipe(pttFile);
-                pttPipe = new PttPipe(pttFile, DigirigPtt.open(this, device), DireWolfService::addLogLine);
+                UsbSerialPtt port = UsbSerialPtt.open(this, device, settings.ptt == 2);
+                pttPipe = new PttPipe(pttFile, port, DireWolfService::addLogLine);
                 pttPipe.start();
                 pttInUse = true;
-                addLogLine("PTT: Digirig RTS.");
+                addLogLine("PTT: " + port.line() + " line of " + UsbSerialPtt.label(UsbSerialPtt.key(device)) + ".");
             } catch (Exception e) {
                 addLogLine("PTT is off for this run: " + e.getMessage() + ".");
                 settings.ptt = 0;
@@ -276,7 +277,7 @@ public final class DireWolfService extends Service {
         }
     }
 
-    /** Releases PTT and the Digirig. */
+    /** Releases PTT and the USB serial port. */
     private synchronized void stopPtt() {
         if (pttPipe != null) {
             pttPipe.stop();
@@ -285,7 +286,7 @@ public final class DireWolfService extends Service {
         pttInUse = false;
     }
 
-    /** Dire Wolf is running with the Digirig open for PTT (the Test PTT button must wait). */
+    /** Dire Wolf is running with the PTT serial port open (the Test PTT button must wait). */
     static boolean pttInUse() {
         return pttInUse;
     }

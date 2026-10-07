@@ -13,9 +13,10 @@ import java.io.FileDescriptor;
 import java.util.function.Consumer;
 
 /**
- * Carries Dire Wolf's PTT changes to the Digirig. Dire Wolf ("PTT ptt.pipe RTS", Android patch
- * in ptt.c) writes one letter per change into this named pipe: R / r = RTS on / off,
- * D / d = DTR on / off. Only RTS keys the Digirig; DTR is ignored. PTT is released when the
+ * Carries Dire Wolf's PTT changes to a USB serial port. Dire Wolf ("PTT ptt.pipe RTS", Android patch
+ * in ptt.c) writes one letter per change into this named pipe: R / r = PTT on / off (D / d, which
+ * Dire Wolf sends only for a DTR setting, are ignored). The app sets the chosen line (RTS or DTR)
+ * of the chosen port (UsbSerialPtt). PTT is released when the
  * reader stops.
  */
 final class PttPipe {
@@ -23,12 +24,12 @@ final class PttPipe {
     private static final byte STOP = 'x';
 
     private final File pipe;
-    private final DigirigPtt ptt;
+    private final UsbSerialPtt ptt;
     private final Consumer<String> log;
     private FileDescriptor fd;
     private Thread reader;
 
-    PttPipe(File pipe, DigirigPtt ptt, Consumer<String> log) {
+    PttPipe(File pipe, UsbSerialPtt ptt, Consumer<String> log) {
         this.pipe = pipe;
         this.ptt = ptt;
         this.log = log;
@@ -57,7 +58,7 @@ final class PttPipe {
                 if (b[0] == 'R' || b[0] == 'r') {
                     boolean on = b[0] == 'R';
                     ptt.setPtt(on);
-                    log.accept("PTT " + (on ? "on" : "off") + " (Digirig RTS reads " + (ptt.rtsOn() ? "on" : "off") + ")");
+                    log.accept("PTT " + (on ? "on" : "off") + " (" + ptt.line() + " reads " + (ptt.pttOn() ? "on" : "off") + ")");
                 }
             }
         } catch (Exception e) {
@@ -68,7 +69,7 @@ final class PttPipe {
     }
 
     void stop() {
-        if (reader == null) {   // start() failed: only the Digirig is open
+        if (reader == null) {   // start() failed: only the serial port is open
             ptt.close();
             return;
         }

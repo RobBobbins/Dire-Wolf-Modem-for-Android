@@ -11,6 +11,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // usb-serial-for-android (USB serial PTT), as in FieldMail
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
