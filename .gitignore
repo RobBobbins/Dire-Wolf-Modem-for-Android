@@ -1,0 +1,11 @@
+# Build output
+build/
+app/build/
+.gradle/
+# This PC's Android SDK path
+local.properties
+# Dire Wolf's original git history, kept locally to regenerate the patch list
+.upstream-git/
+# IDE files
+.idea/
+*.iml
