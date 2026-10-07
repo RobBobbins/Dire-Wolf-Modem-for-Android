@@ -2,7 +2,7 @@
 
 Android build of the Dire Wolf packet modem and TNC, version 1.8.1 (git a231971, November 2025). Separate from the FieldMail app: FieldMail talks to this modem only over Dire Wolf's standard network ports on the phone, so FieldMail contains no Dire Wolf code.
 
-Status 2026-10-07: step B1 done (command-line programs built for the phone and checked). The app wrapper, FieldMail's connection and PTT are not built yet. The plan (steps B1 to B6) is in FieldMail's `PACKET-STATUS.md`.
+Status 2026-10-07: steps B1 (built and checked) and B2 (packets both ways through the air) done. The app wrapper, FieldMail's connection and PTT are not built yet. The plan (steps B1 to B6) is in FieldMail's `PACKET-STATUS.md`.
 
 ## Source
 
@@ -47,4 +47,9 @@ NDK=/c/Users/Robert/AppData/Local/Android/Sdk/ndk/28.2.13676358
 - `atest` on FieldMail's own 1200 baud test file: 3 of 3 decoded.
 - Sound: `direwolf` with `ADEVICE default` and `ARATE 48000` opened AAudio input device 19 (built-in microphone) and output device 3 (built-in speaker), 48,000 samples per second, mono, 16 bit; listened 8 seconds, nothing transmitted.
 
-Not tested yet: packets through the air (step B2).
+- Through the air (step B2), phone built-in speaker and microphone beside the PC (Realtek speakers, USB sound card microphone), PC running Dire Wolf 1.8.1 for Windows:
+  - Phone to PC: `CBEACON delay=0:04 every=0:08 dest=VA3OSO info="DW-ANDROID-TX"` from VA3OZO; the PC decoded 4 of 4 (audio level 41 to 42).
+  - PC to phone: 3 UI frames "DIREWOLF-PC-TX 1..3" sent through `kissutil`; the phone decoded 3 of 3 (audio level 45 to 46).
+  - Run on the phone as `timeout -s INT <seconds> ./direwolf -t 0 -c <file>`: SIGINT lets Dire Wolf write out its screen log before it stops.
+
+Not built yet: the app wrapper with a background service (step B3).
