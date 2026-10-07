@@ -4,12 +4,14 @@
  */
 package org.w3bguru.direwolfmodem;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
@@ -45,6 +47,8 @@ public final class DireWolfService extends Service {
 
     private Process process;
     private Thread watcher;
+    /** Feeds the phone's position to Dire Wolf while position beacons are on. */
+    private GpsFeed gps;
     private volatile boolean stopping;
 
     public static String status() {
@@ -104,10 +108,17 @@ public final class DireWolfService extends Service {
                 .setOngoing(true)
                 .build();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+            int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+            if (beaconsUsable(s)) type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+            startForeground(NOTIFICATION_ID, n, type);
         } else {
             startForeground(NOTIFICATION_ID, n);
         }
+    }
+
+    /** Beacons are on and the app may use precise location. */
+    private boolean beaconsUsable(ModemSettings s) {
+        return s.beacons && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
     }
 
     /**
@@ -141,9 +152,17 @@ public final class DireWolfService extends Service {
         ModemSettings settings = ModemSettings.load(this);
         int input = presentDevice(AudioManager.GET_DEVICES_INPUTS, settings.inputId, settings.inputName, "input");
         int output = presentDevice(AudioManager.GET_DEVICES_OUTPUTS, settings.outputId, settings.outputName, "output");
+        File pipe = new File(getFilesDir(), "gps.pipe");
+        if (settings.beacons && !beaconsUsable(settings)) {
+            addLogLine("Position beacons are off for this run: precise location permission is not allowed.");
+            settings.beacons = false;
+        }
         try {
+            if (settings.beacons) GpsFeed.makePipe(pipe);
             try (FileOutputStream out = new FileOutputStream(conf)) {
-                out.write(settings.config(input, output).getBytes(StandardCharsets.UTF_8));
+                // Name only: Dire Wolf keeps 19 characters of the GPS device name (config.h,
+                // gpsnmea_port[20]), and it runs in the files folder where the pipe is.
+                out.write(settings.config(input, output, pipe.getName()).getBytes(StandardCharsets.UTF_8));
             }
             // -t 0: no colour codes in the output.
             addLogLine("Settings: " + settings.speed + " baud, KISS " + settings.kissPort + ", AGW " + settings.agwPort
@@ -154,6 +173,11 @@ public final class DireWolfService extends Service {
             pb.redirectOutput(console);
             process = pb.start();
             status = "Starting…";
+            if (settings.beacons) {
+                addLogLine("Position beacons on: every " + settings.beaconMinutes + " min, symbol " + settings.beaconSymbol + ".");
+                gps = new GpsFeed(this, pipe, DireWolfService::addLogLine);
+                gps.start();
+            }
         } catch (Exception e) {
             status = "Could not start Dire Wolf: " + e.getMessage();
             addLogLine(status);
@@ -199,6 +223,7 @@ public final class DireWolfService extends Service {
                 break;
             }
         }
+        stopGps();
         int code = p.isAlive() ? -1 : p.exitValue();
         status = stopping ? "Stopped" : "Stopped — Dire Wolf exited (code " + code + ")";
         addLogLine(status);
@@ -220,7 +245,15 @@ public final class DireWolfService extends Service {
         }
     }
 
+    private synchronized void stopGps() {
+        if (gps != null) {
+            gps.stop();
+            gps = null;
+        }
+    }
+
     private void stopDireWolf() {
+        stopGps();
         final Process p = process;
         if (p == null) {
             stopForeground(STOP_FOREGROUND_REMOVE);

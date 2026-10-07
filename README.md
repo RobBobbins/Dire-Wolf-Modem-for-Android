@@ -2,7 +2,7 @@
 
 Android build of the Dire Wolf packet modem and TNC, version 1.8.1 (git a231971, November 2025). Separate from the FieldMail app: FieldMail talks to this modem only over Dire Wolf's standard network ports on the phone, so FieldMail contains no Dire Wolf code.
 
-Status 2026-10-07: steps B1 (built and checked), B2 (packets both ways through the air), B3 (the app) and B4 (FieldMail sends Winlink messages through it) done. PTT (B5) and GPS (B6) are not built yet. The plan (steps B1 to B6) is in FieldMail's `PACKET-STATUS.md`.
+Status 2026-10-07: steps B1 (built and checked), B2 (packets both ways through the air), B3 (the app), B4 (FieldMail sends Winlink messages through it) and B6 (GPS position beacons) done. PTT (B5) is not built yet. The plan (steps B1 to B6) is in FieldMail's `PACKET-STATUS.md`.
 
 ## Source
 
@@ -71,10 +71,14 @@ Build: `gradlew.bat assembleDebug assembleRelease` in this folder (it builds and
 | **Persistence, 0 to 255** / **Slot time, ms** / **Extra wait before sending, ms** | `PERSIST` / `SLOTTIME` / `DWAIT` | 63 / 100 / 0 |
 | **Error correction (sending)**: Off, FX.25 with 16, 32 or 64 check bytes, IL2P | `FX25TX 16/32/64`, `IL2PTX 1` | Off |
 | **Advanced: extra Dire Wolf setting lines** | added at the end of the file | empty |
+| **Send position beacons (uses GPS)** | `GPSNMEA gps.pipe 0` and `TBEACON delay=0:30 every=<minutes>:00 symbol="<symbol>"` (see GPS below) | off |
+| **Beacon every, minutes (1 to 60)** | `TBEACON every=` | 10 |
+| **APRS symbol (2 characters; /[ person, /> car)** | `TBEACON symbol=` (table and symbol characters; names such as "car" need a file the app does not have) | `/[` |
+| **Beacon comment (optional, up to 40 characters)** | `TBEACON comment=` | empty |
 
 Always written: `ARATE 48000`, `ACHANNELS 1`, `CHANNEL 0`. No PTT yet.
 
-Checks on save: ports 1024 to 65535 and different from each other, callsign up to 6 letters and digits with an optional -SSID 0 to 15, times 0 to 2550 ms, persistence 0 to 255. A sound device is saved by ID and name; at Start, a device that is no longer present is looked up by name (a re-plugged USB sound card gets a new ID), else the phone's default is used and the log says so.
+Checks on save: ports 1024 to 65535 and different from each other, callsign up to 6 letters and digits with an optional -SSID 0 to 15, times 0 to 2550 ms, persistence 0 to 255, beacon interval 1 to 60 minutes, symbol of 2 characters (table `/`, `\` or an overlay A-Z, 0-9, then the symbol), comment up to 40 plain characters without `"`, and a callsign when beacons are on. A sound device is saved by ID and name; at Start, a device that is no longer present is looked up by name (a re-plugged USB sound card gets a new ID), else the phone's default is used and the log says so.
 
 Checked on the phone 2026-10-07: **Start** asks for the microphone (and notification) permission, then shows "Running — waiting for a program on port 8101" and the "Dire Wolf modem running" notification; `/proc/net/tcp` shows only 127.0.0.1:8100 and 127.0.0.1:8101 listening; a connection from the phone itself is "Attached to KISS TCP client"; a connection from the PC over Wi-Fi to the phone's address, port 8101, is refused; **Stop** ends the program, closes both ports, removes the notification and shows "Stopped". Settings: KISS port 8111 saved and used (Dire Wolf "Ready to accept KISS TCP client application 0 on port 8111", 127.0.0.1:8111 listening, settings file matches the screen); KISS port 8100 refused with "Not saved: KISS port and AGW port must be different."; back to 8101; the **Sound input** list offers "Phone's default" and the two built-in microphones (devices 19 and 21).
 
@@ -83,3 +87,17 @@ Checked on the phone 2026-10-07: **Start** asks for the microphone (and notifica
 FieldMail's **Packet Winlink Session** has **Modem** "Dire Wolf Modem app" and a **Dire Wolf KISS port** field (8101 by default; it must match this app's KISS port). FieldMail connects to 127.0.0.1 on that port and runs its own AX.25 connection and Winlink session; this app does the tones.
 
 Checked 2026-10-07 (FieldMail run `b4-01`): this app running with the phone's speaker and microphone, FieldMail called VA3OSO, through the air to Dire Wolf on the PC and Winlink Express in Packet P2P: one Winlink message each way, "Sent 1, received 1", 24 seconds, no resends.
+
+## GPS and position beacons (step B6)
+
+When **Send position beacons (uses GPS)** is on, the service makes a named pipe `gps.pipe` in the app's files folder before Dire Wolf starts, and Dire Wolf reads it as its GPS receiver (`GPSNMEA gps.pipe 0`). No change to Dire Wolf's files was needed: on Android it opens the "serial port" as a plain file and only warns when the port settings cannot be set (the log shows `tcgetattr: Permission denied` and `tcsetattr: Permission denied`; harmless).
+
+- The name is given relative to Dire Wolf's working folder (the files folder) because Dire Wolf keeps only 19 characters of the GPS device name (`upstream/src/config.h`, `gpsnmea_port[20]`); the full path was cut off on the first try.
+- `GpsFeed.java` writes the phone GPS chip's own `$GPRMC`/`$GNRMC` and `$GPGGA`/`$GNGGA` lines into the pipe. If the phone gives no NMEA lines, it builds `$GPRMC` and `$GPGGA` from Android's GPS location once a second.
+- Dire Wolf keeps the last position it was given with no age limit, and takes the fix from `$GPGGA`. So with no fresh position (no NMEA for 3 s and no location for 10 s), and at **Stop**, the app sends `$GPGGA` with fix quality 0; Dire Wolf prints "Location fix has been lost" and skips tracker beacons until a fix returns.
+- Permissions: precise location "While using the app" (asked at **Start** only when beacons are on), `FOREGROUND_SERVICE_LOCATION`; the service type is microphone plus location only while beacons are on. GPS is used only while beacons are on. Without the permission the run starts with beacons off and the log says so.
+- Privacy: a position beacon carries the phone's real position. On a radio it is public.
+
+Checked 2026-10-07 (phone SM-G981W, indoors): Dire Wolf on the phone printed "Location fix is now 3D" (the phone's own NMEA lines are used) and sent `VA3OZO>APDW18:!<position>[`. Acoustic run `b6-02`: Dire Wolf 1.8.1 on the PC decoded 2 beacons from VA3OZO, 61 s apart, the first 26 s after **Start**, audio level 39, symbol `/[`, the phone's latitude and longitude. Release APK 286,964 bytes unsigned.
+
+Dire Wolf's screen output is fully buffered when it goes to a file (`textcolor.c` writes with `fputs` and no flush), so lines can arrive late in the app's log, and can be lost when a run is killed. For PC test evidence use Dire Wolf's `-L <file>` packet log, which is flushed after every packet.

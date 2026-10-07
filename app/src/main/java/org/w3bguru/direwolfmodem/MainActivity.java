@@ -19,6 +19,7 @@ import android.media.AudioManager;
 import android.text.InputType;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
@@ -45,6 +46,8 @@ public final class MainActivity extends Activity {
     private TextView portsView;
     private TextView settingsNote;
     private EditText kissPort, agwPort, callsign, txDelay, txTail, persist, slotTime, dwait, advanced;
+    private EditText beaconMinutes, beaconSymbol, beaconComment;
+    private CheckBox beacons;
     private Spinner inputDevice, outputDevice, fec;
     private RadioGroup speed;
     private final List<AudioDeviceInfo> inputs = new ArrayList<>(), outputs = new ArrayList<>();
@@ -175,6 +178,18 @@ public final class MainActivity extends Activity {
         advanced = text(root, "Advanced: extra Dire Wolf setting lines", s.advanced, true);
         hint(root, "Added at the end of Dire Wolf's settings file, one setting per line. A wrong line can stop Dire Wolf from starting; its log shows why.");
 
+        beacons = new CheckBox(this);
+        beacons.setText("Send position beacons (uses GPS)");
+        beacons.setChecked(s.beacons);
+        beacons.setPadding(0, pad / 2, 0, 0);
+        root.addView(beacons);
+        hint(root, "Dire Wolf sends this phone's GPS position as an APRS beacon (TBEACON), first 30 s after Start. "
+                + "Needs your callsign and precise location. GPS is on only while beacons are on. "
+                + "On a radio the beacon is public: anyone can see where the phone is.");
+        beaconMinutes = number(root, "Beacon every, minutes (1 to 60)", s.beaconMinutes);
+        beaconSymbol = text(root, "APRS symbol (2 characters; /[ person, /> car)", s.beaconSymbol, false);
+        beaconComment = text(root, "Beacon comment (optional, up to 40 characters)", s.beaconComment, false);
+
         Button save = new Button(this);
         save.setText("Save settings");
         save.setOnClickListener(v -> saveSettings());
@@ -193,6 +208,7 @@ public final class MainActivity extends Activity {
             s.persist = Integer.parseInt(persist.getText().toString().trim());
             s.slotTimeMs = Integer.parseInt(slotTime.getText().toString().trim());
             s.dwaitMs = Integer.parseInt(dwait.getText().toString().trim());
+            s.beaconMinutes = Integer.parseInt(beaconMinutes.getText().toString().trim());
         } catch (NumberFormatException e) {
             settingsNote.setText("Not saved: every number field needs a whole number.");
             return;
@@ -206,6 +222,9 @@ public final class MainActivity extends Activity {
         s.callsign = callsign.getText().toString().trim().toUpperCase(java.util.Locale.US);
         s.fec = fec.getSelectedItemPosition();
         s.advanced = advanced.getText().toString();
+        s.beacons = beacons.isChecked();
+        s.beaconSymbol = beaconSymbol.getText().toString().trim();
+        s.beaconComment = beaconComment.getText().toString().trim();
         String problem = s.problem();
         if (problem != null) {
             settingsNote.setText("Not saved: " + problem);
@@ -326,6 +345,12 @@ public final class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             needed.add(Manifest.permission.POST_NOTIFICATIONS);
+        }
+        if (ModemSettings.load(this).beacons
+                && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // Android 12 and newer need both in one request; the person picks Precise.
+            needed.add(Manifest.permission.ACCESS_FINE_LOCATION);
+            needed.add(Manifest.permission.ACCESS_COARSE_LOCATION);
         }
         if (needed.isEmpty()) {
             startForegroundService(new Intent(this, DireWolfService.class));

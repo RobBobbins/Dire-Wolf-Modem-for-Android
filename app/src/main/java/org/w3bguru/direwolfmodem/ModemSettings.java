@@ -30,6 +30,11 @@ final class ModemSettings {
     int persist = 63, slotTimeMs = 100, dwaitMs = 0;
     int fec = 0;
     String advanced = "";
+    /** Position beacons (Dire Wolf TBEACON) with the phone's GPS position. */
+    boolean beacons;
+    int beaconMinutes = 10;
+    String beaconSymbol = "/[";
+    String beaconComment = "";
 
     static ModemSettings load(Context context) {
         SharedPreferences p = context.getSharedPreferences("settings", Context.MODE_PRIVATE);
@@ -49,6 +54,10 @@ final class ModemSettings {
         s.dwaitMs = p.getInt("dwaitMs", s.dwaitMs);
         s.fec = p.getInt("fec", 0);
         s.advanced = p.getString("advanced", "");
+        s.beacons = p.getBoolean("beacons", false);
+        s.beaconMinutes = p.getInt("beaconMinutes", s.beaconMinutes);
+        s.beaconSymbol = p.getString("beaconSymbol", s.beaconSymbol);
+        s.beaconComment = p.getString("beaconComment", "");
         return s;
     }
 
@@ -61,6 +70,8 @@ final class ModemSettings {
                 .putInt("txDelayMs", txDelayMs).putInt("txTailMs", txTailMs)
                 .putInt("persist", persist).putInt("slotTimeMs", slotTimeMs).putInt("dwaitMs", dwaitMs)
                 .putInt("fec", fec).putString("advanced", advanced)
+                .putBoolean("beacons", beacons).putInt("beaconMinutes", beaconMinutes)
+                .putString("beaconSymbol", beaconSymbol).putString("beaconComment", beaconComment)
                 .apply();
     }
 
@@ -80,14 +91,22 @@ final class ModemSettings {
         if (slotTimeMs < 0 || slotTimeMs > 2550) return "Slot time must be 0 to 2550 ms.";
         if (dwaitMs < 0 || dwaitMs > 2550) return "DWAIT must be 0 to 2550 ms.";
         if (fec < 0 || fec >= FEC_LABELS.length) return "Unknown error correction choice.";
+        if (beaconMinutes < 1 || beaconMinutes > 60) return "Beacon every: 1 to 60 minutes.";
+        if (!beaconSymbol.matches("[/\\\\A-Z0-9][!-~]") || beaconSymbol.contains("\""))
+            return "APRS symbol: 2 characters, a table (/ or \\ or an overlay A-Z, 0-9) then the symbol, for example /[ or />.";
+        if (beaconComment.length() > 40 || !beaconComment.matches("[ -~]*") || beaconComment.contains("\""))
+            return "Beacon comment: up to 40 plain characters, no \" marks.";
+        if (beacons && callsign.isEmpty()) return "Position beacons need your callsign in Callsign (MYCALL).";
         return null;
     }
 
     /**
      * The Dire Wolf configuration file. inputDevice / outputDevice: the Android device IDs
      * to use (0 = phone's default), already checked against the devices present.
+     * gpsPipe: the named pipe GpsFeed writes positions into (used when beacons are on),
+     * at most 19 characters, relative to Dire Wolf's working folder.
      */
-    String config(int inputDevice, int outputDevice) {
+    String config(int inputDevice, int outputDevice, String gpsPipe) {
         String in = inputDevice == 0 ? "default" : String.valueOf(inputDevice);
         String out = outputDevice == 0 ? "default" : String.valueOf(outputDevice);
         StringBuilder c = new StringBuilder();
@@ -104,6 +123,14 @@ final class ModemSettings {
         // KISSPORT 0 removes Dire Wolf's default KISS port 8001, so only kissPort is open.
         c.append("KISSPORT 0\n");
         c.append("KISSPORT ").append(kissPort).append('\n');
+        if (beacons) {
+            // The app writes the phone's GPS position into this named pipe (GpsFeed).
+            // Speed 0: leave the "port" settings alone (it is a pipe, not a serial port).
+            c.append("GPSNMEA ").append(gpsPipe).append(" 0\n");
+            c.append(String.format(Locale.US, "TBEACON delay=0:30 every=%d:00 symbol=\"%s\"", beaconMinutes, beaconSymbol));
+            if (!beaconComment.isEmpty()) c.append(" comment=\"").append(beaconComment).append('"');
+            c.append('\n');
+        }
         if (!advanced.trim().isEmpty()) {
             c.append("# Advanced settings from the app\n").append(advanced.trim()).append('\n');
         }
