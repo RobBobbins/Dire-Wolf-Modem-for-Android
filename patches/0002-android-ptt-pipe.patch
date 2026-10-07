@@ -1,0 +1,45 @@
+diff --git a/upstream/src/ptt.c b/upstream/src/ptt.c
+index 7682c68..9aa25fb 100644
+--- a/upstream/src/ptt.c
++++ b/upstream/src/ptt.c
+@@ -221,6 +221,27 @@ typedef int HANDLE;
+ 				} \
+ 			}
+ 
++#elif __ANDROID__
++
++/* Android: Dire Wolf cannot reach a USB serial port; the Dire Wolf Modem app does.
++ * "PTT <named pipe> RTS" sends one letter per change into the pipe the app made:
++ * R / r = RTS on / off, D / d = DTR on / off. The app sets the lines on the USB adapter. */
++
++static void android_line (int fd, char c, int chan)
++{
++	if (write (fd, &c, 1) != 1) {
++	  text_color_set(DW_COLOR_ERROR);
++	  dw_printf ("Error sending PTT change '%c' for channel %d to the app, errno %d\n", c, chan, errno);
++	}
++}
++
++#define RTS_ON(fd)	android_line (fd, 'R', chan)
++#define RTS_OFF(fd)	android_line (fd, 'r', chan)
++#define DTR_ON(fd)	android_line (fd, 'D', chan)
++#define DTR_OFF(fd)	android_line (fd, 'd', chan)
++
++#define LPT_IO_ADDR 0x378
++
+ #else	// Linux version
+ 
+ // On success, 0 is returned.  On error, -1 is returned, and errno is
+@@ -929,7 +950,12 @@ void ptt_init (struct audio_s *audio_config_p)
+ 		  /* Was hanging with some USB-serial adapters. */
+ 		  /* https://bugs.launchpad.net/ubuntu/+source/linux/+bug/661321/comments/12 */
+ 
++#if __ANDROID__
++		  /* The app's named pipe: read and write, so opening never waits for the app. */
++	          fd = open (audio_config_p->achan[ch].octrl[ot].ptt_device, O_RDWR | O_NONBLOCK);
++#else
+ 	          fd = open (audio_config_p->achan[ch].octrl[ot].ptt_device, O_RDONLY | O_NONBLOCK);
++#endif
+ #endif
+                 }
+ 

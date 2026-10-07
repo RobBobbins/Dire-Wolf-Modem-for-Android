@@ -6,9 +6,9 @@ Status 2026-10-07: steps B1 (built and checked), B2 (packets both ways through t
 
 ## Source
 
-`upstream/` is a plain copy of https://github.com/wb2osz/direwolf at tag `1.8.1`, commit `a231971a652bfb574a4bae9a5d875fbce53d2267`, without its git history. The only changes to upstream files are in `patches/0001-android-loopback.patch` (see below). The Android build replaces one file and fills header gaps from `port/`.
+`upstream/` is a plain copy of https://github.com/wb2osz/direwolf at tag `1.8.1`, commit `a231971a652bfb574a4bae9a5d875fbce53d2267`, without its git history. The only changes to upstream files are in `patches/0001-android-loopback.patch` and `patches/0002-android-ptt-pipe.patch` (see below). The Android build replaces one file and fills header gaps from `port/`.
 
-To move to a newer Dire Wolf release: replace `upstream/` with a copy of the new release, apply `patches/0001-android-loopback.patch`, check `CMakeLists.txt` against the new `upstream/src/CMakeLists.txt` source lists, rebuild, and repeat the checks below.
+To move to a newer Dire Wolf release: replace `upstream/` with a copy of the new release, apply `patches/0001-android-loopback.patch` and `patches/0002-android-ptt-pipe.patch`, check `CMakeLists.txt` against the new `upstream/src/CMakeLists.txt` source lists, rebuild, and repeat the checks below.
 
 ## Licence
 
@@ -19,7 +19,8 @@ Dire Wolf is GPL-2.0-or-later (`upstream/LICENSE`, copied to `LICENSE`). Everyth
 | Path | What it is |
 |------|------------|
 | `upstream/` | Copy of Dire Wolf 1.8.1 (see Source above) with the patch below applied |
-| `patches/0001-android-loopback.patch` | The only change to Dire Wolf's own files: on Android, the KISS and AGW ports listen on 127.0.0.1 only (`upstream/src/kissnet.c`, `upstream/src/server.c`, inside `#if __ANDROID__`), so other devices on the phone's network cannot connect and make it transmit |
+| `patches/0001-android-loopback.patch` | Change to Dire Wolf's own files: on Android, the KISS and AGW ports listen on 127.0.0.1 only (`upstream/src/kissnet.c`, `upstream/src/server.c`, inside `#if __ANDROID__`), so other devices on the phone's network cannot connect and make it transmit |
+| `patches/0002-android-ptt-pipe.patch` | Change to Dire Wolf's own files: on Android, serial PTT (`PTT <device> RTS`) writes one letter per change (R/r RTS on/off, D/d DTR on/off) into a named pipe made by the app, which keys the Digirig over USB (`upstream/src/ptt.c`, inside `#elif __ANDROID__` and `#if __ANDROID__`) |
 | `app/` | The Android app "Dire Wolf Modem" (`org.w3bguru.direwolfmodem`): screen with **Start** / **Stop**, live log, licence; a foreground service runs the program as `libdirewolf.so` with the settings below |
 | `port/audio_aaudio.c` | Android sound: the six `audio_*` functions of `upstream/src/audio.c` on AAudio (blocking reads and writes, 16-bit PCM). `ADEVICE default` uses Android's default input and output; a number selects that Android audio device ID. `stdin` and `udp:port` input work as in `audio.c` (UDP bound to 127.0.0.1 only) |
 | `port/android_config.h` | Name and version strings that upstream normally gets from its CMake file, and `HAVE_STRLCPY` / `HAVE_STRLCAT` (Android's C library has both) |
@@ -109,3 +110,9 @@ No radio connected. The phone sees the Digirig as two USB devices: a C-Media sou
 - Sound: with **Sound input (receive)** and **Sound output (transmit)** set to the USB headset, the app opened both at 48,000 samples per second and sent 3 test packets (`CBEACON` in the advanced lines); the settings were then put back to **Phone's default**. A separate 14 s run of the command-line program with `-a 3` showed 48.0 k samples per second and 0 errors on the input; the input level rose (15, 8) only while the phone was sending: a small leak of the transmit sound into the input.
 - With the Digirig plugged in, Android sends media and notification sounds to it, and ringtones and alarms to it and the speaker.
 - PTT: **PTT (Digirig)** section, **Test PTT (2 seconds)** (`DigirigPtt.java`): CP210x vendor requests through Android's USB host calls (no library): IFC_ENABLE, SET_MHS for RTS, GET_MDMSTS to read it back. Asks for USB permission on first use. Result on the phone: "RTS (PTT) read back from the Digirig: before off, during on, after off. PTT works." Dire Wolf itself does not key PTT yet. Release APK 288,856 bytes unsigned.
+
+## PTT from Dire Wolf (step B5), 2026-10-07
+
+Setting **PTT (keying the radio)**: "None (no radio, or the radio's VOX)" (default) or "Digirig (RTS on its USB serial port)". With Digirig, **Start** makes the named pipe `ptt.pipe`, opens the Digirig's CP2102N (USB permission must already be allowed: tap **Test PTT** once), and writes `PTT ptt.pipe RTS`. Dire Wolf (patch 0002) writes R or r into the pipe on each PTT change; `PttPipe.java` sets RTS and logs "PTT on (Digirig RTS reads on)" / "PTT off (Digirig RTS reads off)". **Stop**, or Dire Wolf exiting, releases RTS. **Test PTT** refuses while the modem holds the Digirig. If the Digirig is missing or not allowed, the run starts with PTT off and the log says why.
+
+Checked 2026-10-07 (run `ptt-01`, Digirig on the phone, no radio): sound in and out on the Digirig, a test packet every 10 s: the log showed "PTT on (Digirig RTS reads on)", the packet, "PTT off (Digirig RTS reads off)" for each of 3 packets; **Stop** during a 4th packet, after which **Test PTT** read RTS "before off" (released). Not measured: the time between RTS and the start of the audio (TXDELAY 300 ms covers it; to check with a radio). Release APK 289,864 bytes unsigned.

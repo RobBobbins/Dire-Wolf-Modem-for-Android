@@ -49,6 +49,9 @@ public final class DireWolfService extends Service {
     private Thread watcher;
     /** Feeds the phone's position to Dire Wolf while position beacons are on. */
     private GpsFeed gps;
+    /** Keys the Digirig for Dire Wolf while PTT is set to Digirig. */
+    private PttPipe pttPipe;
+    private static volatile boolean pttInUse;
     private volatile boolean stopping;
 
     public static String status() {
@@ -157,6 +160,24 @@ public final class DireWolfService extends Service {
             addLogLine("Position beacons are off for this run: precise location permission is not allowed.");
             settings.beacons = false;
         }
+        File pttFile = new File(getFilesDir(), ModemSettings.PTT_PIPE);
+        if (settings.ptt == 1) {
+            try {
+                android.hardware.usb.UsbDevice device = DigirigPtt.findDevice(this);
+                if (device == null) throw new IllegalStateException("no Digirig serial port is plugged in");
+                if (!getSystemService(android.hardware.usb.UsbManager.class).hasPermission(device))
+                    throw new IllegalStateException("the app may not use the Digirig yet (tap Test PTT once and allow it)");
+                PttPipe.makePipe(pttFile);
+                pttPipe = new PttPipe(pttFile, DigirigPtt.open(this, device), DireWolfService::addLogLine);
+                pttPipe.start();
+                pttInUse = true;
+                addLogLine("PTT: Digirig RTS.");
+            } catch (Exception e) {
+                addLogLine("PTT is off for this run: " + e.getMessage() + ".");
+                settings.ptt = 0;
+                stopPtt();
+            }
+        }
         try {
             if (settings.beacons) GpsFeed.makePipe(pipe);
             try (FileOutputStream out = new FileOutputStream(conf)) {
@@ -182,6 +203,8 @@ public final class DireWolfService extends Service {
             status = "Could not start Dire Wolf: " + e.getMessage();
             addLogLine(status);
             process = null;
+            stopGps();
+            stopPtt();
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
             return;
@@ -224,6 +247,7 @@ public final class DireWolfService extends Service {
             }
         }
         stopGps();
+        stopPtt();
         int code = p.isAlive() ? -1 : p.exitValue();
         status = stopping ? "Stopped" : "Stopped — Dire Wolf exited (code " + code + ")";
         addLogLine(status);
@@ -252,8 +276,23 @@ public final class DireWolfService extends Service {
         }
     }
 
+    /** Releases PTT and the Digirig. */
+    private synchronized void stopPtt() {
+        if (pttPipe != null) {
+            pttPipe.stop();
+            pttPipe = null;
+        }
+        pttInUse = false;
+    }
+
+    /** Dire Wolf is running with the Digirig open for PTT (the Test PTT button must wait). */
+    static boolean pttInUse() {
+        return pttInUse;
+    }
+
     private void stopDireWolf() {
         stopGps();
+        stopPtt();
         final Process p = process;
         if (p == null) {
             stopForeground(STOP_FOREGROUND_REMOVE);

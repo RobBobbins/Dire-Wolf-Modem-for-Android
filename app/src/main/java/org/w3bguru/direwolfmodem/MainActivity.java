@@ -48,7 +48,7 @@ public final class MainActivity extends Activity {
     private EditText kissPort, agwPort, callsign, txDelay, txTail, persist, slotTime, dwait, advanced;
     private EditText beaconMinutes, beaconSymbol, beaconComment;
     private CheckBox beacons;
-    private Spinner inputDevice, outputDevice, fec;
+    private Spinner inputDevice, outputDevice, fec, ptt;
     private RadioGroup speed;
     private final List<AudioDeviceInfo> inputs = new ArrayList<>(), outputs = new ArrayList<>();
 
@@ -149,6 +149,10 @@ public final class MainActivity extends Activity {
             result.setText("No Digirig serial port (Silicon Labs CP210x) is plugged in.");
             return;
         }
+        if (DireWolfService.pttInUse()) {
+            result.setText("The modem is running and is using the Digirig for PTT. Tap Stop first.");
+            return;
+        }
         if (!getSystemService(android.hardware.usb.UsbManager.class).hasPermission(device)) {
             DigirigPtt.requestPermission(this, device);
             result.setText("Allow access to the Digirig in Android's box, then tap Test PTT again.");
@@ -226,6 +230,13 @@ public final class MainActivity extends Activity {
         dwait = number(root, "Extra wait before sending, ms (DWAIT; default 0)", s.dwaitMs);
         hint(root, "Dire Wolf counts these times in 10 ms steps.");
 
+        label(root, "PTT (keying the radio)");
+        ptt = new Spinner(this);
+        ptt.setAdapter(listAdapter(java.util.Arrays.asList(ModemSettings.PTT_LABELS)));
+        ptt.setSelection(s.ptt);
+        root.addView(ptt);
+        hint(root, "Digirig: Dire Wolf keys the radio for each transmission (PTT RTS). Tap Test PTT once first so Android lets the app use the Digirig.");
+
         label(root, "Error correction (sending)");
         fec = new Spinner(this);
         fec.setAdapter(listAdapter(java.util.Arrays.asList(ModemSettings.FEC_LABELS)));
@@ -279,6 +290,7 @@ public final class MainActivity extends Activity {
         s.speed = speed.getCheckedRadioButtonId();
         s.callsign = callsign.getText().toString().trim().toUpperCase(java.util.Locale.US);
         s.fec = fec.getSelectedItemPosition();
+        s.ptt = ptt.getSelectedItemPosition();
         s.advanced = advanced.getText().toString();
         s.beacons = beacons.isChecked();
         s.beaconSymbol = beaconSymbol.getText().toString().trim();
