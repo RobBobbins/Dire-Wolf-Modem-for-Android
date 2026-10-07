@@ -2,7 +2,7 @@
 
 Android build of the Dire Wolf packet modem and TNC, version 1.8.1 (git a231971, November 2025). Separate from the FieldMail app: FieldMail talks to this modem only over Dire Wolf's standard network ports on the phone, so FieldMail contains no Dire Wolf code.
 
-Status 2026-10-07: steps B1 (built and checked), B2 (packets both ways through the air) and B3 (the app) done. FieldMail's connection (B4), PTT (B5) and GPS (B6) are not built yet. The plan (steps B1 to B6) is in FieldMail's `PACKET-STATUS.md`.
+Status 2026-10-07: steps B1 (built and checked), B2 (packets both ways through the air), B3 (the app) and B4 (FieldMail sends Winlink messages through it) done. PTT (B5) and GPS (B6) are not built yet. The plan (steps B1 to B6) is in FieldMail's `PACKET-STATUS.md`.
 
 ## Source
 
@@ -77,3 +77,9 @@ Always written: `ARATE 48000`, `ACHANNELS 1`, `CHANNEL 0`. No PTT yet.
 Checks on save: ports 1024 to 65535 and different from each other, callsign up to 6 letters and digits with an optional -SSID 0 to 15, times 0 to 2550 ms, persistence 0 to 255. A sound device is saved by ID and name; at Start, a device that is no longer present is looked up by name (a re-plugged USB sound card gets a new ID), else the phone's default is used and the log says so.
 
 Checked on the phone 2026-10-07: **Start** asks for the microphone (and notification) permission, then shows "Running — waiting for a program on port 8101" and the "Dire Wolf modem running" notification; `/proc/net/tcp` shows only 127.0.0.1:8100 and 127.0.0.1:8101 listening; a connection from the phone itself is "Attached to KISS TCP client"; a connection from the PC over Wi-Fi to the phone's address, port 8101, is refused; **Stop** ends the program, closes both ports, removes the notification and shows "Stopped". Settings: KISS port 8111 saved and used (Dire Wolf "Ready to accept KISS TCP client application 0 on port 8111", 127.0.0.1:8111 listening, settings file matches the screen); KISS port 8100 refused with "Not saved: KISS port and AGW port must be different."; back to 8101; the **Sound input** list offers "Phone's default" and the two built-in microphones (devices 19 and 21).
+
+## FieldMail through this app (step B4)
+
+FieldMail's **Packet Winlink Session** has **Modem** "Dire Wolf Modem app" and a **Dire Wolf KISS port** field (8101 by default; it must match this app's KISS port). FieldMail connects to 127.0.0.1 on that port and runs its own AX.25 connection and Winlink session; this app does the tones.
+
+Checked 2026-10-07 (FieldMail run `b4-01`): this app running with the phone's speaker and microphone, FieldMail called VA3OSO, through the air to Dire Wolf on the PC and Winlink Express in Packet P2P: one Winlink message each way, "Sent 1, received 1", 24 seconds, no resends.
