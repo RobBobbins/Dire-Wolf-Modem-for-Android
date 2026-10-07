@@ -555,7 +555,12 @@ static THREAD_F connect_listen_thread (void *arg)
 
         setsockopt (listen_sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&bcopt, 4);
 
+#if __ANDROID__
+    	/* Android: only programs on this phone may connect (no remote control over Wi-Fi). */
+    	sockaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+#else
     	sockaddr.sin_addr.s_addr = INADDR_ANY;
+#endif
 	sockaddr.sin_port = htons(kps->tcp_port);
     	sockaddr.sin_family = AF_INET;
 

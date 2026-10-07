@@ -1,0 +1,85 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "org.w3bguru.direwolfmodem"
+    compileSdk 35
+    ndkVersion "28.2.13676358"
+
+    // Android only installs files named lib*.so from jniLibs as runnable files
+    // in nativeLibraryDir, so the Dire Wolf program ships as libdirewolf.so and
+    // is extracted on install (legacy packaging).
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs += layout.buildDirectory.dir("direwolf-jni").get().asFile
+        }
+    }
+
+    defaultConfig {
+        applicationId "org.w3bguru.direwolfmodem"
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0-direwolf1.8.1"
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt")
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// Builds the Dire Wolf command-line program with ../CMakeLists.txt (the same
+// build that passed steps B1 and B2), strips it and places it as
+// build/direwolf-jni/arm64-v8a/libdirewolf.so.
+def localProps = new Properties()
+new File(rootDir, "local.properties").withInputStream { localProps.load(it) }
+def sdkDir = new File(localProps.getProperty("sdk.dir"))
+def ndkDir = new File(sdkDir, "ndk/28.2.13676358")
+def cmakeBin = new File(sdkDir, "cmake/3.22.1/bin")
+def nativeOut = new File(rootDir, "build/arm64")
+def jniOut = layout.buildDirectory.dir("direwolf-jni/arm64-v8a").get().asFile
+def exe = System.getProperty("os.name").toLowerCase().contains("windows") ? ".exe" : ""
+
+tasks.register("configureDireWolf", Exec) {
+    workingDir rootDir
+    commandLine new File(cmakeBin, "cmake" + exe).absolutePath,
+            "-S", rootDir.absolutePath, "-B", nativeOut.absolutePath, "-G", "Ninja",
+            "-DCMAKE_MAKE_PROGRAM=" + new File(cmakeBin, "ninja" + exe).absolutePath,
+            "-DCMAKE_TOOLCHAIN_FILE=" + new File(ndkDir, "build/cmake/android.toolchain.cmake").absolutePath,
+            "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-26", "-DCMAKE_BUILD_TYPE=Release"
+}
+
+tasks.register("buildDireWolf", Exec) {
+    dependsOn "configureDireWolf"
+    workingDir rootDir
+    commandLine new File(cmakeBin, "cmake" + exe).absolutePath, "--build", nativeOut.absolutePath, "--target", "direwolf"
+}
+
+tasks.register("stripDireWolf", Exec) {
+    dependsOn "buildDireWolf"
+    doFirst { jniOut.mkdirs() }
+    def strip = new File(ndkDir, "toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip" + exe)
+    commandLine strip.absolutePath, "-o", new File(jniOut, "libdirewolf.so").absolutePath,
+            new File(nativeOut, "direwolf").absolutePath
+}
+
+tasks.named("preBuild") { dependsOn "stripDireWolf" }
