@@ -17,6 +17,7 @@ import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.PowerManager;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -103,6 +104,7 @@ public final class DireWolfService extends Service {
             return START_NOT_STICKY;
         }
         startInForeground();
+        acquireWakeLock();
         if (process == null) startDireWolf();
         return START_NOT_STICKY;
     }
@@ -110,7 +112,23 @@ public final class DireWolfService extends Service {
     @Override
     public void onDestroy() {
         stopDireWolf();
+        releaseWakeLock();
         super.onDestroy();
+    }
+
+    /** Keeps the processor awake while the modem runs, so it works with the screen off (released in onDestroy). */
+    private PowerManager.WakeLock wakeLock;
+
+    private void acquireWakeLock() {
+        if (wakeLock != null && wakeLock.isHeld()) return;
+        wakeLock = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DireWolfModem:modem");
+        wakeLock.setReferenceCounted(false);
+        wakeLock.acquire(24 * 60 * 60 * 1000L);   // always a time limit: a day
+    }
+
+    private void releaseWakeLock() {
+        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+        wakeLock = null;
     }
 
     private void startInForeground() {
