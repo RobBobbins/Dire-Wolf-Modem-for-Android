@@ -233,6 +233,8 @@ public final class DireWolfService extends Service {
             ProcessBuilder pb = new ProcessBuilder(exe.getAbsolutePath(), "-t", "0", "-c", conf.getAbsolutePath());
             pb.directory(getFilesDir());
             pb.environment().put("DIREWOLF_INPUT_PERCENT", String.valueOf(settings.inputPercent));
+            // The screen's waterfall: Dire Wolf (port/audio_aaudio.c) sends its received sound to this local port.
+            pb.environment().put("DIREWOLF_WATERFALL_PORT", String.valueOf(WaterfallFeed.PORT));
             pb.redirectErrorStream(true);
             pb.redirectOutput(console);
             process = pb.start();

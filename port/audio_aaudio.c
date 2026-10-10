@@ -157,6 +157,38 @@ static AAudioStream *open_stream (int a, struct audio_s *pa, const char *name, a
  */
 static int input_percent = 100;
 
+/*
+ * Android app waterfall: when DIREWOLF_WATERFALL_PORT is set, the first sound card's received
+ * samples (first channel, after the input level) also go as 16-bit little-endian UDP datagrams to
+ * 127.0.0.1:<port>. Nothing is sent without the variable; a datagram nobody reads is dropped.
+ */
+static int waterfall_sock = -2;
+static struct sockaddr_in waterfall_addr;
+
+static void waterfall_send (const int16_t *s, int frames, int channels)
+{
+	if (waterfall_sock == -2) {
+	  const char *p = getenv("DIREWOLF_WATERFALL_PORT");
+	  int port = p ? atoi(p) : 0;
+	  waterfall_sock = -1;
+	  if (port > 0 && port < 65536 && (waterfall_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) >= 0) {
+	    memset (&waterfall_addr, 0, sizeof(waterfall_addr));
+	    waterfall_addr.sin_family = AF_INET;
+	    waterfall_addr.sin_port = htons((uint16_t)port);
+	    waterfall_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	  }
+	}
+	if (waterfall_sock < 0) return;
+	int16_t out[512];
+	while (frames > 0) {
+	  int k = frames > 512 ? 512 : frames, i;
+	  for (i = 0; i < k; i++) out[i] = s[i * channels];
+	  sendto (waterfall_sock, out, (size_t)k * sizeof(int16_t), MSG_DONTWAIT,
+		(const struct sockaddr *)&waterfall_addr, sizeof(waterfall_addr));
+	  s += k * channels; frames -= k;
+	}
+}
+
 int audio_open (struct audio_s *pa)
 {
 	int a, chan;
@@ -284,6 +316,8 @@ int audio_get (int a)
 	          smp[i] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
 	        }
 	      }
+	      if (a == 0 && save_audio_config_p->adev[a].bits_per_sample == 16)
+	        waterfall_send ((const int16_t *)adev[a].inbuf_ptr, (int)r, save_audio_config_p->adev[a].num_channels);
 	      break;
 	    }
 	    case AUDIO_IN_TYPE_SDR_UDP:

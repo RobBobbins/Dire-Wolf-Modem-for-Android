@@ -53,6 +53,9 @@ public final class MainActivity extends Activity {
     /** The saved PTT port when it is not plugged in now (kept on save). */
     private String savedPttPort = "";
     private RadioGroup speed;
+    /** Waterfall of the sound Dire Wolf receives (sent by the modem to WaterfallFeed.PORT). */
+    private WaterfallView waterfall;
+    private WaterfallFeed waterfallFeed;
     private final List<AudioDeviceInfo> inputs = new ArrayList<>(), outputs = new ArrayList<>();
 
     private final Runnable refresh = new Runnable() {
@@ -100,6 +103,18 @@ public final class MainActivity extends Activity {
         buttons.addView(startButton);
         buttons.addView(stopButton);
         root.addView(buttons);
+
+        TextView waterfallTitle = new TextView(this);
+        waterfallTitle.setText("Waterfall");
+        waterfallTitle.setTextSize(20);
+        waterfallTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        root.addView(waterfallTitle);
+        waterfall = new WaterfallView(this);
+        waterfallFeed = new WaterfallFeed(waterfall);
+        LinearLayout.LayoutParams waterfallSize = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                (int) (200 * getResources().getDisplayMetrics().density));
+        waterfallSize.setMargins(0, pad / 4, 0, pad / 2);
+        root.addView(waterfall, waterfallSize);
 
         TextView packetsTitle = new TextView(this);
         packetsTitle.setText("Packets (newest first)");
@@ -455,11 +470,22 @@ public final class MainActivity extends Activity {
         super.onResume();
         showPorts();
         handler.post(refresh);
+        markWaterfallTones();
+        waterfallFeed.start();
+    }
+
+    /** The tones of the saved speed: 1,200 and 2,200 Hz at 1200 baud, 1,600 and 1,800 Hz at 300; none at 9600 (no tones). */
+    private void markWaterfallTones() {
+        int baud = ModemSettings.load(this).speed;
+        if (baud == 1200) waterfall.setBand(1200, 2200, 3000);
+        else if (baud == 300) waterfall.setBand(1600, 1800, 3000);
+        else waterfall.setBand(0, 0, 3000);
     }
 
     @Override
     protected void onPause() {
         handler.removeCallbacks(refresh);
+        waterfallFeed.stop();
         super.onPause();
     }
 
