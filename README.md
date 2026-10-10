@@ -2,7 +2,7 @@
 
 Android build of the Dire Wolf packet modem and TNC, version 1.8.1 (git a231971, November 2025). Separate from the FieldMail app: FieldMail talks to this modem only over Dire Wolf's standard network ports on the phone, so FieldMail contains no Dire Wolf code.
 
-Status 2026-10-07: steps B1 (built and checked), B2 (packets both ways through the air), B3 (the app), B4 (FieldMail sends Winlink messages through it) and B6 (GPS position beacons) done. PTT (B5) is not built yet. The plan (steps B1 to B6) is in FieldMail's `PACKET-STATUS.md`.
+Status 2026-10-10: steps B1 (built and checked), B2 (packets both ways through the air), B3 (the app), B4 (FieldMail sends Winlink messages through it), B5 (PTT on a USB serial port, checked without a radio) and B6 (GPS position beacons) done. Since then: input level, a partial wake lock so the modem keeps working with the screen off, and a waterfall on the main screen. The plan (steps B1 to B6) is in FieldMail's `PACKET-STATUS.md`.
 
 ## Source
 
@@ -131,8 +131,12 @@ First radio test (2026-10-07, receive only): FT-817 in PKT mode on 144.390 MHz, 
 
 ## Input level (2026-10-07)
 
-**Waterfall** on the main screen: the app passes `DIREWOLF_WATERFALL_PORT` (8009), and `port/audio_aaudio.c` sends the first sound card's received samples (after the input level) as 16-bit UDP datagrams to 127.0.0.1 on that port; `WaterfallFeed.java` receives them while the screen is visible and `WaterfallView.java` draws 0 to 3,000 Hz with the tones of the chosen speed marked (1200 baud: 1,200 and 2,200 Hz; 300 baud: 1,600 and 1,800 Hz; 9600: none). Dire Wolf's own files are unchanged.
-
 Setting **Input level, % (5 to 400; default 100)**: the app passes it to Dire Wolf as the environment variable `DIREWOLF_INPUT_PERCENT`, and `port/audio_aaudio.c` scales the sound card samples by it before Dire Wolf decodes them (Dire Wolf's own files are unchanged). For radios whose fixed receive level is too loud or too quiet: the FT-817's DATA socket gives a fixed level with no menu to change it.
 
 Checked on the air (2 m APRS, FT-817, Digirig): at 100 % every packet read audio level 200 with Dire Wolf's "too high" warning (16 packets, run `aprs-rx-01`); at 25 % the same stations read level 50, no warning, still decoding (VE3NOZ-1, VA3KMS, VA3TM, K8JJT-9). Every packet reading exactly 200 at 100 % suggests the sound may already be at full scale in the Digirig's input; the level number is now right, and decoding continued. Release APK 318,225 bytes unsigned.
+
+## Waterfall (2026-10-10)
+
+The main screen shows a **Waterfall** under **Start** / **Stop**: the app passes `DIREWOLF_WATERFALL_PORT` (8009), and `port/audio_aaudio.c` sends the first sound card's received samples (after the input level) as 16-bit UDP datagrams to 127.0.0.1 on that port; `WaterfallFeed.java` receives them while the screen is visible and `WaterfallView.java` draws 0 to 3,000 Hz with the tones of the chosen speed marked (1200 baud: 1,200 and 2,200 Hz; 300 baud: 1,600 and 1,800 Hz; 9600: none). Dire Wolf's own files are unchanged.
+
+Checked on the phone (SM-G981W): the room sound showed while the modem ran with the phone's microphone. Release APK 322,721 bytes unsigned.
